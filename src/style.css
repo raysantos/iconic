@@ -99,7 +99,23 @@ input[type='range'] {
 #canvas .selection {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 0.1;
-  stroke-dasharray: 0.4 0.3;
+  stroke-dasharray: 0.3 0.2;
   pointer-events: none;
+}
+
+#canvas .handle-dot {
+  fill: var(--accent);
+  stroke: #fff;
+  pointer-events: none;
+}
+#canvas .handle {
+  fill: transparent;
+  cursor: nwse-resize;
+}
+#canvas .handle-ne,
+#canvas .handle-sw {
+  cursor: nesw-resize;
+}
+#canvas .handle-rot {
+  cursor: grab;
 }

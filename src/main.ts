@@ -10,11 +10,25 @@ interface Style {
   strokeWidth: number;
 }
 
+interface Base extends Style {
+  id: string;
+  rotation?: number; // degrees, around the shape's bounding-box center
+}
+
 type Shape =
-  | ({ id: string; type: 'rect'; x: number; y: number; w: number; h: number } & Style)
-  | ({ id: string; type: 'ellipse'; cx: number; cy: number; rx: number; ry: number } & Style)
-  | ({ id: string; type: 'line'; x1: number; y1: number; x2: number; y2: number } & Style)
-  | ({ id: string; type: 'path'; points: [number, number][] } & Style);
+  | (Base & { type: 'rect'; x: number; y: number; w: number; h: number })
+  | (Base & { type: 'ellipse'; cx: number; cy: number; rx: number; ry: number })
+  | (Base & { type: 'line'; x1: number; y1: number; x2: number; y2: number })
+  | (Base & { type: 'path'; points: [number, number][] });
+
+type Pt = [number, number];
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+type Handle = 'nw' | 'ne' | 'sw' | 'se' | 'rot';
 
 const SIZE = 24; // icon grid size (viewBox 0 0 24 24)
 const STORAGE_KEY = 'iconic:doc';
@@ -110,8 +124,53 @@ function shapeToElement(s: Shape): SVGElement {
     'stroke-linecap': 'round',
     'stroke-linejoin': 'round',
   });
+  if (s.rotation) {
+    const [cx, cy] = center(bbox(s));
+    setAttrs(el, { transform: `rotate(${round(s.rotation)} ${round(cx)} ${round(cy)})` });
+  }
   el.dataset.id = s.id;
   return el;
+}
+
+// Bounding box in the shape's own (unrotated) frame.
+function bbox(s: Shape): Box {
+  switch (s.type) {
+    case 'rect':
+      return { x: s.x, y: s.y, w: s.w, h: s.h };
+    case 'ellipse':
+      return { x: s.cx - s.rx, y: s.cy - s.ry, w: s.rx * 2, h: s.ry * 2 };
+    case 'line':
+      return fromPoints([[s.x1, s.y1], [s.x2, s.y2]]);
+    case 'path':
+      return fromPoints(s.points);
+  }
+}
+
+function fromPoints(pts: Pt[]): Box {
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const [x, y] = [Math.min(...xs), Math.min(...ys)];
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+}
+
+const center = (b: Box): Pt => [b.x + b.w / 2, b.y + b.h / 2];
+
+function rotate([x, y]: Pt, deg: number, [cx, cy]: Pt): Pt {
+  const r = (deg * Math.PI) / 180;
+  const [c, s] = [Math.cos(r), Math.sin(r)];
+  return [cx + (x - cx) * c - (y - cy) * s, cy + (x - cx) * s + (y - cy) * c];
+}
+
+// Map shape geometry from box `a` onto box `b` (stroke width is unchanged).
+function scaleShape(s: Shape, o: Shape, a: Box, b: Box) {
+  const sx = a.w ? b.w / a.w : 1;
+  const sy = a.h ? b.h / a.h : 1;
+  const mx = (x: number) => b.x + (x - a.x) * sx;
+  const my = (y: number) => b.y + (y - a.y) * sy;
+  if (s.type === 'rect' && o.type === 'rect') Object.assign(s, { x: mx(o.x), y: my(o.y), w: o.w * sx, h: o.h * sy });
+  else if (s.type === 'ellipse' && o.type === 'ellipse') Object.assign(s, { cx: mx(o.cx), cy: my(o.cy), rx: o.rx * sx, ry: o.ry * sy });
+  else if (s.type === 'line' && o.type === 'line') Object.assign(s, { x1: mx(o.x1), y1: my(o.y1), x2: mx(o.x2), y2: my(o.y2) });
+  else if (s.type === 'path' && o.type === 'path') s.points = o.points.map(([x, y]) => [mx(x), my(y)]);
 }
 
 function setAttrs(el: Element, attrs: Record<string, string | number>) {
@@ -143,14 +202,50 @@ function render() {
   for (const s of shapes) canvas.append(shapeToElement(s));
 
   const sel = shapes.find((s) => s.id === selectedId);
-  if (sel) {
-    const el = canvas.querySelector(`[data-id="${sel.id}"]`) as SVGGraphicsElement;
-    const b = el.getBBox();
-    const box = document.createElementNS(SVG_NS, 'rect');
-    setAttrs(box, { x: b.x - 0.3, y: b.y - 0.3, width: b.width + 0.6, height: b.height + 0.6 });
-    box.setAttribute('class', 'selection');
-    canvas.append(box);
+  if (sel && drag?.mode !== 'create') canvas.append(selectionOverlay(sel));
+}
+
+// Canvas units per screen pixel, so handles stay a constant on-screen size.
+const unitsPerPx = () => SIZE / canvas.getBoundingClientRect().width;
+
+function selectionOverlay(s: Shape): SVGGElement {
+  const g = document.createElementNS(SVG_NS, 'g');
+  const b = bbox(s);
+  const [cx, cy] = center(b);
+  if (s.rotation) g.setAttribute('transform', `rotate(${s.rotation} ${cx} ${cy})`);
+
+  const u = unitsPerPx();
+  const pad = s.strokeWidth / 2 + 6 * u; // sit just outside the stroke
+  const box = document.createElementNS(SVG_NS, 'rect');
+  setAttrs(box, { x: b.x - pad, y: b.y - pad, width: b.w + pad * 2, height: b.h + pad * 2, 'stroke-width': 1.5 * u });
+  box.setAttribute('class', 'selection');
+  g.append(box);
+
+  const rotY = b.y - pad - 24 * u;
+  const stem = document.createElementNS(SVG_NS, 'line');
+  setAttrs(stem, { x1: cx, y1: b.y - pad, x2: cx, y2: rotY, 'stroke-width': 1.5 * u });
+  stem.setAttribute('class', 'selection');
+  g.append(stem);
+
+  const handles: [Handle, number, number][] = [
+    ['nw', b.x - pad, b.y - pad],
+    ['ne', b.x + b.w + pad, b.y - pad],
+    ['sw', b.x - pad, b.y + b.h + pad],
+    ['se', b.x + b.w + pad, b.y + b.h + pad],
+    ['rot', cx, rotY],
+  ];
+  for (const [name, x, y] of handles) {
+    const dot = document.createElementNS(SVG_NS, 'circle');
+    setAttrs(dot, { cx: x, cy: y, r: 6 * u, 'stroke-width': 2 * u });
+    dot.setAttribute('class', 'handle-dot');
+    // Invisible, larger circle on top: a ~32px touch target.
+    const hit = document.createElementNS(SVG_NS, 'circle');
+    setAttrs(hit, { cx: x, cy: y, r: 16 * u });
+    hit.setAttribute('class', `handle handle-${name}`);
+    hit.dataset.handle = name;
+    g.append(dot, hit);
   }
+  return g;
 }
 
 // ---- Pointer interaction (mouse, touch, pen) ---------------------------
@@ -170,12 +265,29 @@ function currentStyle(): Style {
   };
 }
 
-let drag: { start: [number, number]; shape?: Shape; original?: string } | null = null;
+interface Drag {
+  mode: 'create' | 'move' | 'resize' | 'rotate';
+  start: Pt;
+  shape: Shape;
+  original: Shape; // snapshot at drag start
+  handle?: Handle;
+}
+let drag: Drag | null = null;
 
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   const p = toCanvas(e);
   const [sx, sy] = [snap(p[0]), snap(p[1])];
+  const selected = shapes.find((s) => s.id === selectedId);
+
+  // Handles work with any tool, so a shape can be adjusted right after drawing it.
+  const handle = (e.target as Element).closest('[data-handle]') as SVGElement | null;
+  if (handle && selected) {
+    checkpoint();
+    const h = handle.dataset.handle as Handle;
+    drag = { mode: h === 'rot' ? 'rotate' : 'resize', handle: h, start: p, shape: selected, original: structuredClone(selected) };
+    return;
+  }
 
   if (tool === 'select') {
     const target = (e.target as Element).closest('[data-id]') as SVGElement | null;
@@ -183,7 +295,7 @@ canvas.addEventListener('pointerdown', (e) => {
     const shape = shapes.find((s) => s.id === selectedId);
     if (shape) {
       checkpoint();
-      drag = { start: p, shape, original: JSON.stringify(shape) };
+      drag = { mode: 'move', start: p, shape, original: structuredClone(shape) };
     }
     render();
     return;
@@ -199,43 +311,81 @@ canvas.addEventListener('pointerdown', (e) => {
   else shape = { id, type: 'path', points: [p], ...style, fill: 'none', strokeWidth: style.strokeWidth || 1 };
   shapes.push(shape);
   selectedId = id;
-  drag = { start: [sx, sy], shape };
+  drag = { mode: 'create', start: [sx, sy], shape, original: structuredClone(shape) };
   render();
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (!drag?.shape) return;
+  if (!drag) return;
   const p = toCanvas(e);
-  const s = drag.shape;
+  const { shape: s, original: o } = drag;
 
-  if (tool === 'select') {
-    const o = JSON.parse(drag.original!) as Shape;
-    const dx = snap(p[0] - drag.start[0]);
-    const dy = snap(p[1] - drag.start[1]);
-    moveShape(s, o, dx, dy);
-    render();
-    return;
+  if (drag.mode === 'move') {
+    moveShape(s, o, snap(p[0] - drag.start[0]), snap(p[1] - drag.start[1]));
+  } else if (drag.mode === 'resize') {
+    resize(s, o, drag.handle!, p, e.shiftKey);
+  } else if (drag.mode === 'rotate') {
+    const [cx, cy] = center(bbox(o));
+    let deg = (Math.atan2(p[1] - cy, p[0] - cx) * 180) / Math.PI + 90;
+    const nearest = Math.round(deg / 15) * 15;
+    // Shift locks to 15° steps; otherwise it gently snaps when close to one.
+    deg = e.shiftKey || Math.abs(deg - nearest) < 3 ? nearest : Math.round(deg);
+    s.rotation = ((deg % 360) + 360) % 360;
+  } else {
+    const [x, y] = [snap(p[0]), snap(p[1])];
+    const [x0, y0] = drag.start;
+    if (s.type === 'rect') Object.assign(s, { x: Math.min(x0, x), y: Math.min(y0, y), w: Math.abs(x - x0), h: Math.abs(y - y0) });
+    else if (s.type === 'ellipse') Object.assign(s, { cx: (x0 + x) / 2, cy: (y0 + y) / 2, rx: Math.abs(x - x0) / 2, ry: Math.abs(y - y0) / 2 });
+    else if (s.type === 'line') Object.assign(s, { x2: x, y2: y });
+    else if (s.type === 'path') s.points.push(p);
   }
-
-  const [x, y] = [snap(p[0]), snap(p[1])];
-  const [x0, y0] = drag.start;
-  if (s.type === 'rect') Object.assign(s, { x: Math.min(x0, x), y: Math.min(y0, y), w: Math.abs(x - x0), h: Math.abs(y - y0) });
-  else if (s.type === 'ellipse') Object.assign(s, { cx: (x0 + x) / 2, cy: (y0 + y) / 2, rx: Math.abs(x - x0) / 2, ry: Math.abs(y - y0) / 2 });
-  else if (s.type === 'line') Object.assign(s, { x2: x, y2: y });
-  else if (s.type === 'path') s.points.push(p);
   render();
 });
+
+// Resize by dragging a corner; the opposite corner stays fixed on screen,
+// even when the shape is rotated.
+function resize(s: Shape, o: Shape, h: Handle, p: Pt, keepRatio: boolean) {
+  const b = bbox(o);
+  const rot = o.rotation ?? 0;
+  const c = center(b);
+  let [px, py] = rotate(p, -rot, c); // pointer in the shape's local frame
+  if (!rot) [px, py] = [snap(px), snap(py)];
+
+  const anchor: Pt = [h.includes('w') ? b.x + b.w : b.x, h.includes('n') ? b.y + b.h : b.y];
+  // Zero-width/height boxes (straight lines) only scale along their length.
+  let w = b.w ? Math.max(Math.abs(px - anchor[0]), 0.5) : 0;
+  let hgt = b.h ? Math.max(Math.abs(py - anchor[1]), 0.5) : 0;
+  if (keepRatio && b.w && b.h) {
+    const k = Math.max(w / b.w, hgt / b.h);
+    [w, hgt] = [b.w * k, b.h * k];
+  }
+  const nb: Box = {
+    x: b.w && px < anchor[0] ? anchor[0] - w : b.w ? anchor[0] : b.x,
+    y: b.h && py < anchor[1] ? anchor[1] - hgt : b.h ? anchor[1] : b.y,
+    w,
+    h: hgt,
+  };
+  scaleShape(s, o, b, nb);
+
+  if (rot) {
+    // Rotation pivots around the new center; shift so the anchor doesn't move.
+    const before = rotate(anchor, rot, c);
+    const after = rotate(anchor, rot, center(nb));
+    moveShape(s, structuredClone(s), before[0] - after[0], before[1] - after[1]);
+  }
+}
 
 function endDrag() {
   if (!drag) return;
   const s = drag.shape;
-  // Discard zero-size shapes from accidental taps.
-  if (s && tool !== 'select' && isEmpty(s)) {
-    shapes = shapes.filter((x) => x.id !== s.id);
-    undoStack.pop();
-    selectedId = null;
+  if (drag.mode === 'create') {
+    // Discard zero-size shapes from accidental taps.
+    if (isEmpty(s)) {
+      shapes = shapes.filter((x) => x.id !== s.id);
+      undoStack.pop();
+      selectedId = null;
+    } else if (s.type === 'path') s.points = simplify(s.points, 0.15);
   }
-  if (s?.type === 'path') s.points = simplify(s.points, 0.15);
   drag = null;
   commit();
 }
