@@ -1,5 +1,7 @@
 # Iconic
 
+**Live app:** https://raysantos.github.io/iconic/
+
 A lightweight vector icon editor that runs on PC and phone. It's a Progressive Web App (PWA): open it in a browser, then "Install" (desktop Chrome/Edge) or "Add to Home Screen" (iOS Safari / Android Chrome) to use it like a native app, including offline.
 
 ## Features (v0.1)
@@ -28,7 +30,7 @@ npm run dev
 npm run build
 ```
 
-Output goes to `dist/`. Host it on any static host with HTTPS (GitHub Pages, Netlify, Vercel, Cloudflare Pages) so phones can install it.
+Output goes to `dist/`. Every push to `main` deploys automatically to GitHub Pages via `.github/workflows/deploy.yml`.
 
 ## Roadmap ideas
 

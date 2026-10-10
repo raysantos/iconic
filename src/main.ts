@@ -381,5 +381,5 @@ $('exportPng').addEventListener('click', () => {
 setTool('rect');
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register('/sw.js');
+  navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js');
 }
