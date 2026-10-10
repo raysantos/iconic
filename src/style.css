@@ -19,9 +19,11 @@
   --row-h: 32px;
   --field-h: 28px;
   color-scheme: light;
-  font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Roboto Flex (bundled, variable): optical sizing tunes letterforms for small UI text. */
+  font-family: 'Roboto Flex Variable', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 12px;
-  font-feature-settings: 'cv11', 'ss01';
+  font-optical-sizing: auto;
+  letter-spacing: 0.01em;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -87,7 +89,7 @@ kbd {
   border-radius: 4px;
   background: var(--ui-input);
   border: 1px solid var(--ui-border);
-  font: 500 11px Inter, system-ui, sans-serif;
+  font: 500 11px 'Roboto Flex Variable', Roboto, system-ui, sans-serif;
   text-align: center;
   white-space: nowrap;
 }
@@ -734,7 +736,7 @@ body.scrubbing * {
 
 #canvas .artboard-label {
   fill: var(--ui-text-2);
-  font-family: Inter, system-ui, sans-serif;
+  font-family: 'Roboto Flex Variable', Roboto, system-ui, sans-serif;
   pointer-events: none;
 }
 
@@ -800,7 +802,7 @@ body.scrubbing * {
 }
 #canvas .size-badge text {
   fill: #fff;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: 'Roboto Flex Variable', Roboto, system-ui, sans-serif;
   font-weight: 500;
 }
 
@@ -1077,7 +1079,7 @@ body.scrubbing * {
 
 #canvas .artboard-label text {
   fill: var(--ui-text-2);
-  font-family: Inter, system-ui, sans-serif;
+  font-family: 'Roboto Flex Variable', Roboto, system-ui, sans-serif;
   pointer-events: none;
 }
 #canvas .artboard-label.active text {
@@ -1181,7 +1183,7 @@ body.scrubbing * {
 }
 #canvas .smart-guides text {
   fill: #fff;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: 'Roboto Flex Variable', Roboto, system-ui, sans-serif;
   font-weight: 500;
 }
 #canvas .guide-dot {
@@ -1275,4 +1277,216 @@ body.scrubbing * {
   width: auto;
   margin: 0;
   padding: 0 16px;
+}
+
+/* ---- Color picker (Figma-style) ------------------------------------------- */
+
+button.swatch {
+  padding: 0;
+  border: none;
+}
+button.swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.color-picker {
+  position: fixed;
+  z-index: 120;
+  width: 240px;
+  padding: 0 0 12px;
+  border-radius: 10px;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  box-shadow:
+    0 2px 6px rgb(0 0 0 / 0.15),
+    0 16px 40px rgb(0 0 0 / 0.25);
+  user-select: none;
+}
+.color-picker.sheet {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  border-radius: 14px 14px 0 0;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+.cp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 6px 0 14px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--ui-border);
+}
+.cp-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 18px;
+  color: var(--ui-text-2);
+}
+.cp-close:hover {
+  background: var(--ui-hover);
+}
+
+.cp-area {
+  position: relative;
+  height: 172px;
+  margin: 12px 12px 0;
+  border-radius: 6px;
+  background:
+    linear-gradient(to top, #000, transparent),
+    linear-gradient(to right, #fff, transparent),
+    var(--hue);
+  cursor: crosshair;
+  touch-action: none;
+  outline: none;
+}
+.color-picker.sheet .cp-area {
+  height: 200px;
+}
+
+.cp-thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.25),
+    0 1px 3px rgb(0 0 0 / 0.3);
+  pointer-events: none;
+}
+.cp-area:focus-visible .cp-thumb,
+.cp-hue:focus-visible .cp-thumb {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+.cp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 12px 0;
+}
+.cp-eyedropper {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--ui-text);
+}
+.cp-eyedropper:hover {
+  background: var(--ui-hover);
+}
+
+.cp-hue {
+  position: relative;
+  flex: 1;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(to right, #f00, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00);
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+.cp-hue .cp-thumb {
+  top: 50%;
+}
+@media (pointer: coarse) {
+  .cp-hue {
+    height: 20px;
+    border-radius: 10px;
+  }
+  .cp-thumb {
+    width: 22px;
+    height: 22px;
+    margin: -11px 0 0 -11px;
+  }
+}
+
+.cp-inputs {
+  display: flex;
+  gap: 6px;
+  margin: 12px 12px 0;
+}
+.cp-mode {
+  height: var(--field-h);
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--ui-input);
+  color: var(--ui-text);
+  font-size: 12px;
+}
+.cp-fields {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+.cp-field {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: var(--field-h);
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--ui-input);
+  outline: none;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.cp-field.wide {
+  text-align: left;
+  text-transform: uppercase;
+}
+.cp-field:focus,
+.cp-mode:focus {
+  border-color: var(--accent);
+  background: var(--ui-bg);
+}
+
+.cp-swatches {
+  margin: 4px 12px 0;
+}
+.cp-sw-label {
+  margin: 10px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ui-text-2);
+}
+.cp-sw-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+.cp-swatch {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  background: var(--c);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+.cp-swatch:hover {
+  transform: scale(1.12);
+}
+.cp-swatch.on {
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 0.12),
+    0 0 0 2px var(--ui-bg),
+    0 0 0 3.5px var(--accent);
+}
+
+/* Letter-spacing is inherited as an absolute length, which the zoomed canvas
+   would magnify; keep canvas labels at the font's natural spacing. */
+#canvas {
+  letter-spacing: normal;
 }

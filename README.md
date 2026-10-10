@@ -40,6 +40,8 @@ A vector editor for designing **Google Material icons**, on PC and phone. Figma-
 - **Join** (`Ctrl+J`): close an open path, or join two open paths at their nearest ends
 - **Pencil** strokes become smooth, editable Bezier curves
 - **Design panel:** X/Y/W/H/rotation/corner radius (drag the label to scrub, arrows step, math like `12+4`), alignment, fill, stroke weight, ends and corners
+- **Color picker:** saturation/brightness area, hue slider, Hex / RGB / HSL, eyedropper (Chrome/Edge), document colors and a Material palette; keyboard and touch friendly, one undo step per pick
+- **Interface font:** Roboto Flex (variable, optical sizing), bundled so it works offline
 - **Layers:** multi-select, drag to reorder, rename, lock, hide
 - Undo/redo, autosave, mouse/touch (pinch zoom)/stylus
 
@@ -93,3 +95,4 @@ Iconic is free software: you can redistribute it and/or modify it under the term
 ### Third-party software
 
 - [pathkit-wasm](https://www.npmjs.com/package/pathkit-wasm) (Skia PathOps) — Copyright Google LLC, BSD 3-Clause License
+- [Roboto Flex](https://github.com/googlefonts/roboto-flex) via [@fontsource-variable/roboto-flex](https://www.npmjs.com/package/@fontsource-variable/roboto-flex) — Copyright The Roboto Flex Project Authors, SIL Open Font License 1.1

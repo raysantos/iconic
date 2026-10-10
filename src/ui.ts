@@ -2,10 +2,11 @@
 import * as A from './actions';
 import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setCursor, setHover, viewState, zoomAt, zoomTo } from './canvas';
 import { checkSinglePath, DENSITIES, exportArtboards, fileBase, type ExportFormat, type ExportIssue } from './export';
+import { openColorPicker } from './colorpicker';
 import { icon } from './icons';
 import { BOOL_LABEL, ICON_SIZES, TYPE_LABEL, type BoolOp, type Cap, type IconStyle, type Join, type Shape, type Tool } from './model';
 import { installShortcuts, keyFor, pretty, SHORTCUTS } from './shortcuts';
-import { activeArtboard, artboards, byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, setActiveArtboard, shapes, state, subscribe, undo } from './store';
+import { activeArtboard, allShapes, artboards, byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, setActiveArtboard, shapes, state, subscribe, undo } from './store';
 
 const q = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
 
@@ -710,7 +711,7 @@ function fillSection(sel: Shape[]) {
   const fills = [...new Set(targets.map((s) => s.fill))];
   const none = fills.every((f) => f === 'none');
   const sec = paintSection('Fill', 'fill', none, () => A.setStyle({ fill: none ? lastFill() : 'none' }));
-  if (!none && targets.length) sec.append(colorRow(fills.length > 1 ? null : fills[0], (c, live) => A.setStyle({ fill: c }, { live })));
+  if (!none && targets.length) sec.append(colorRow(fills.length > 1 ? null : fills[0], (c, live) => A.setStyle({ fill: c }, { live }), 'Fill'));
   if (!sel.length) sec.append(h('p', { class: 'd-hint', textContent: 'Used for new shapes' }));
   return sec;
 }
@@ -723,7 +724,7 @@ function strokeSection(sel: Shape[]) {
     const strokes = [...new Set(targets.map((s) => s.stroke))];
     const widths = [...new Set(targets.map((s) => s.strokeWidth))];
     sec.append(
-      colorRow(strokes.length > 1 ? null : strokes[0], (c, live) => A.setStyle({ stroke: c }, { live })),
+      colorRow(strokes.length > 1 ? null : strokes[0], (c, live) => A.setStyle({ stroke: c }, { live }), 'Stroke'),
       h(
         'div',
         { class: 'd-grid' },
@@ -789,28 +790,36 @@ function paintSection(title: string, which: 'fill' | 'stroke', none: boolean, to
   return h('section', { class: 'd-section' + (none ? ' empty' : '') }, head);
 }
 
-function colorRow(value: string | null, apply: (c: string, live: boolean) => void) {
+function colorRow(value: string | null, apply: (c: string, live: boolean) => void, title = 'Color') {
   const color = value ?? '#888888';
-  const picker = h('input', { type: 'color', value: color.length === 7 ? color : '#888888', title: 'Pick color' });
-  const swatch = h('label', { class: 'swatch' + (value ? '' : ' mixed') }, picker);
+  const swatch = h('button', { class: 'swatch' + (value ? '' : ' mixed'), title: `Edit ${title.toLowerCase()} color` });
+  swatch.setAttribute('aria-label', `${title} color ${value ?? 'mixed'}`);
   swatch.style.setProperty('--c', color);
   const hex = h('input', { class: 'hex', value: value ? value.replace('#', '').toUpperCase() : 'Mixed', spellcheck: false, title: 'Hex color' });
 
-  // Dragging in the picker previews live; one undo step per pick.
-  let started = false;
-  picker.addEventListener('input', () => {
-    if (!started) {
-      checkpoint();
-      started = true;
-    }
-    swatch.style.setProperty('--c', picker.value);
-    hex.value = picker.value.slice(1).toUpperCase();
-    apply(picker.value.toUpperCase(), true);
-  });
-  picker.addEventListener('change', () => {
-    started = false;
-    discardIfUnchanged();
-    commit();
+  // The picker previews live; the whole visit is one undo step.
+  swatch.addEventListener('click', () => {
+    let started = false;
+    openColorPicker(swatch, {
+      title,
+      color,
+      documentColors: allShapes().flatMap((s) => [s.type !== 'line' ? s.fill : '', s.strokeWidth > 0 ? s.stroke : '']).filter((c) => c && c !== 'none'),
+      onInput: (c) => {
+        if (!started) {
+          checkpoint();
+          started = true;
+        }
+        swatch.style.setProperty('--c', c);
+        swatch.classList.remove('mixed');
+        hex.value = c.slice(1);
+        apply(c, true);
+      },
+      onClose: () => {
+        if (!started) return;
+        discardIfUnchanged();
+        commit();
+      },
+    });
   });
   hex.addEventListener('focus', () => hex.select());
   hex.addEventListener('change', () => {

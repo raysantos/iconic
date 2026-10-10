@@ -1,3 +1,5 @@
+// Roboto Flex, bundled (works offline): weight + optical-size axes.
+import '@fontsource-variable/roboto-flex/opsz.css';
 import './style.css';
 import './canvas';
 import { pathOpsReady } from './pathops';
