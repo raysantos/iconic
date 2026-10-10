@@ -1,0 +1,105 @@
+:root {
+  --bg: #1e1e24;
+  --panel: #2a2a33;
+  --text: #e8e8ee;
+  --accent: #4f8cff;
+  --artboard: #ffffff;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  overscroll-behavior: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  background: var(--panel);
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+button {
+  min-width: 44px; /* comfortable touch target */
+  height: 44px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 25%, var(--bg));
+}
+
+input[type='color'] {
+  width: 44px;
+  height: 44px;
+  padding: 2px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+input[type='range'] {
+  width: 90px;
+}
+
+.stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  min-height: 0;
+}
+
+#canvas {
+  width: min(100%, 100vh - 160px);
+  max-height: 100%;
+  aspect-ratio: 1;
+  background: var(--artboard);
+  border-radius: 6px;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 0.4);
+  touch-action: none; /* we handle all touch gestures */
+}
+
+#canvas .grid line {
+  stroke: #000;
+  stroke-opacity: 0.07;
+  stroke-width: 0.03;
+  pointer-events: none;
+}
+
+#canvas .selection {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 0.1;
+  stroke-dasharray: 0.4 0.3;
+  pointer-events: none;
+}
