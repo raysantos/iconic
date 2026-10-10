@@ -31,6 +31,7 @@
         <button id="clear" title="New icon">✚</button>
       </div>
       <div class="group">
+        <select id="size" title="Artboard size"></select>
         <button id="exportSvg" title="Export SVG">SVG</button>
         <button id="exportPng" title="Export PNG">PNG</button>
       </div>
@@ -47,6 +48,15 @@
         <ul id="layerList"></ul>
       </aside>
     </div>
+    <dialog id="pngDialog">
+      <h2>Export PNG</h2>
+      <p>Pick one or more sizes. Several sizes download as a .zip.</p>
+      <div id="pngSizes" class="png-sizes"></div>
+      <div class="dialog-actions">
+        <button id="pngCancel" type="button">Cancel</button>
+        <button id="pngExport" type="button" class="primary">Export</button>
+      </div>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

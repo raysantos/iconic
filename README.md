@@ -6,13 +6,13 @@ A lightweight vector icon editor that runs on PC and phone. It's a Progressive W
 
 ## Features (v0.1)
 
-- 24×24 icon artboard with pixel grid and half-pixel snapping
+- 16, 24, 32 or 48 px artboard with pixel grid and half-pixel snapping (changing size scales the artwork)
 - Tools: select/move, rectangle, ellipse, line, freehand pen
 - Fill, stroke color and stroke width (applies to the selected shape too)
 - Resize handles (Shift keeps proportions) and rotation with 15° snapping
 - Layers panel: select, rename, reorder, hide/show (hidden layers are not exported)
 - Undo/redo, delete, autosave to the device
-- Export to SVG or 512px PNG
+- Export to SVG, or PNG at any mix of sizes from 16 to 1024 px (several sizes download as one .zip)
 - Mouse, touch and stylus input (Pointer Events)
 
 Shortcuts: `V` select, `R` rect, `E` ellipse, `L` line, `P` pen, `Ctrl+Z` / `Ctrl+Y`, `Ctrl+]` / `Ctrl+[` (forward/backward), `Del`.
@@ -38,4 +38,3 @@ Output goes to `dist/`. Every push to `main` deploys automatically to GitHub Pag
 
 - Bezier pen tool and node editing
 - Multiple icons / icon sets, export as sprite or icon font
-- Configurable artboard size (16, 24, 32, 48)

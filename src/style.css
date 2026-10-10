@@ -91,15 +91,15 @@ input[type='range'] {
 
 #canvas .grid line {
   stroke: #000;
-  stroke-opacity: 0.07;
-  stroke-width: 0.03;
+  stroke-opacity: 0.08;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
 
 #canvas .selection {
   fill: none;
   stroke: var(--accent);
-  stroke-dasharray: 0.3 0.2;
   pointer-events: none;
 }
 
@@ -247,4 +247,62 @@ input[type='range'] {
     border-left: none;
     border-top: 1px solid #0003;
   }
+}
+
+select {
+  height: 44px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+dialog {
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  border: none;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+}
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+dialog h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+dialog p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  opacity: 0.7;
+}
+.png-sizes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.png-sizes label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 14px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+button.primary {
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  padding: 0 16px;
 }
