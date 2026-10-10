@@ -1,7 +1,24 @@
-import type { Doc } from './model';
+// Material-style export: SVG, Android Vector Drawable, and PNG at Android densities.
+import { bezierToPath, intersects, mapNodes, round, toBezier, worldBox } from './geometry';
+import type { Artboard, Doc, Shape } from './model';
 import { exportSvgString } from './svg';
 
-export const PNG_SIZES = [16, 24, 32, 48, 64, 128, 256, 512, 1024];
+export type ExportFormat = 'svg' | 'xml' | 'png';
+
+// Android density buckets (1x = mdpi).
+export const DENSITIES: { name: string; scale: number }[] = [
+  { name: 'mdpi', scale: 1 },
+  { name: 'hdpi', scale: 1.5 },
+  { name: 'xhdpi', scale: 2 },
+  { name: 'xxhdpi', scale: 3 },
+  { name: 'xxxhdpi', scale: 4 },
+];
+
+export interface ExportOptions {
+  format: ExportFormat;
+  densities: string[]; // PNG only
+  currentColor: boolean; // SVG: currentColor · XML: white + colorControlNormal tint
+}
 
 export function download(blob: Blob, name: string) {
   const a = document.createElement('a');
@@ -11,33 +28,93 @@ export function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-const fileBase = (doc: Doc) => doc.name.trim().replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'icon';
+// Material icon names are snake_case: "Arrow Back" -> "arrow_back".
+export const snakeName = (s: string) =>
+  s
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'icon';
 
-export function exportSvg(doc: Doc) {
-  download(new Blob([exportSvgString(doc)], { type: 'image/svg+xml' }), `${fileBase(doc)}.svg`);
+// Material Symbols file naming: add_circle_24dp.svg
+export const fileBase = (ab: Artboard) => `${snakeName(ab.name)}_${round(Math.max(ab.w, ab.h))}dp`;
+
+const visibleOn = (shapes: Shape[], ab: Artboard) => shapes.filter((s) => !s.hidden && intersects(worldBox(s), ab));
+
+function svgFor(doc: Doc, ab: Artboard, currentColor: boolean) {
+  const svg = exportSvgString(doc.shapes, ab);
+  return currentColor ? svg.replace(/(fill|stroke)="#[0-9a-fA-F]{3,8}"/g, '$1="currentColor"') : svg;
 }
 
-async function renderPng(doc: Doc, px: number): Promise<Blob> {
+// Android Vector Drawable: one <path> per shape, in artboard coordinates.
+export function vectorDrawable(doc: Doc, ab: Artboard, currentColor: boolean) {
+  const color = (c: string) => (currentColor ? '@android:color/white' : c.toUpperCase());
+  const paths = visibleOn(doc.shapes, ab).map((s) => {
+    const b = toBezier(s);
+    const d = bezierToPath(mapNodes(b.nodes, ([x, y]) => [x - ab.x, y - ab.y]), b.closed);
+    const attrs = [`android:pathData="${d}"`];
+    if (s.type !== 'line' && s.fill !== 'none') attrs.push(`android:fillColor="${color(s.fill)}"`);
+    if (s.strokeWidth > 0) {
+      attrs.push(
+        `android:strokeColor="${color(s.stroke)}"`,
+        `android:strokeWidth="${round(s.strokeWidth)}"`,
+        `android:strokeLineCap="${s.cap ?? 'round'}"`,
+        `android:strokeLineJoin="${s.join ?? 'round'}"`,
+      );
+    }
+    return `  <path\n      ${attrs.join('\n      ')}/>`;
+  });
+  return [
+    '<vector xmlns:android="http://schemas.android.com/apk/res/android"',
+    `    android:width="${round(ab.w)}dp"`,
+    `    android:height="${round(ab.h)}dp"`,
+    `    android:viewportWidth="${round(ab.w)}"`,
+    `    android:viewportHeight="${round(ab.h)}"${currentColor ? '\n    android:tint="?attr/colorControlNormal"' : ''}>`,
+    ...paths,
+    '</vector>',
+    '',
+  ].join('\n');
+}
+
+async function renderPng(svg: string, w: number, h: number): Promise<Uint8Array> {
   const img = new Image();
-  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(exportSvgString(doc));
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   await img.decode();
   const c = document.createElement('canvas');
-  c.width = c.height = px;
-  c.getContext('2d')!.drawImage(img, 0, 0, px, px);
-  return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG encode failed'))), 'image/png'));
+  [c.width, c.height] = [w, h];
+  c.getContext('2d')!.drawImage(img, 0, 0, w, h);
+  const blob = await new Promise<Blob>((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG encode failed'))), 'image/png'));
+  return new Uint8Array(await blob.arrayBuffer());
 }
 
-// One size downloads a .png; several are bundled into a .zip.
-export async function exportPng(doc: Doc, sizes: number[]) {
-  const base = fileBase(doc);
-  if (sizes.length === 1) {
-    download(await renderPng(doc, sizes[0]), `${base}-${sizes[0]}.png`);
-    return;
+// One file downloads as-is; several are bundled into a .zip
+// (PNGs go into Android drawable-<density>/ folders).
+export async function exportArtboards(doc: Doc, boards: Artboard[], opts: ExportOptions) {
+  const enc = new TextEncoder();
+  const files: { name: string; data: Uint8Array; type: string }[] = [];
+  const used = new Map<string, number>();
+  const unique = (base: string) => {
+    const n = used.get(base) ?? 0;
+    used.set(base, n + 1);
+    return n ? `${base}_${n + 1}` : base;
+  };
+  const densities = DENSITIES.filter((d) => opts.densities.includes(d.name));
+
+  for (const ab of boards) {
+    const base = unique(fileBase(ab));
+    if (opts.format === 'svg') files.push({ name: `${base}.svg`, data: enc.encode(svgFor(doc, ab, opts.currentColor)), type: 'image/svg+xml' });
+    else if (opts.format === 'xml') files.push({ name: `${base}.xml`, data: enc.encode(vectorDrawable(doc, ab, opts.currentColor)), type: 'text/xml' });
+    else {
+      const svg = svgFor(doc, ab, false);
+      for (const d of densities) {
+        const data = await renderPng(svg, Math.max(1, Math.round(ab.w * d.scale)), Math.max(1, Math.round(ab.h * d.scale)));
+        files.push({ name: densities.length > 1 ? `drawable-${d.name}/${base}.png` : `${base}.png`, data, type: 'image/png' });
+      }
+    }
   }
-  const files = await Promise.all(
-    sizes.map(async (n) => ({ name: `${base}-${n}.png`, data: new Uint8Array(await (await renderPng(doc, n)).arrayBuffer()) })),
-  );
-  download(zip(files), `${base}-png.zip`);
+  if (!files.length) return;
+  if (files.length === 1) return download(new Blob([files[0].data as BlobPart], { type: files[0].type }), files[0].name);
+  download(zip(files), `${snakeName(doc.name)}_${opts.format}.zip`);
 }
 
 // Minimal ZIP writer (stored, no compression — PNGs are already compressed).

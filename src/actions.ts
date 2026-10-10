@@ -1,11 +1,11 @@
 // Editing commands shared by keyboard shortcuts, menus and panels.
 import { bbox, center, moveShape, rotate, scaleShape, unionBox, worldBox } from './geometry';
-import type { Box, Pt, Shape, Style } from './model';
-import { checkpoint, commit, emit, newId, savePrefs, selected, shapes, state } from './store';
+import { ICON_STYLES, type Artboard, type Box, type IconStyle, type Pt, type Shape, type Style } from './model';
+import { activeArtboard, artboardById, artboards, checkpoint, commit, emit, inside, newArtboard, newId, nextArtboardName, savePrefs, selected, setActiveArtboard, shapes, state } from './store';
 import { exportSvgString } from './svg';
 
 // Set by the canvas so paste lands in the middle of what you're looking at.
-export const view = { center: (): Pt => [state.doc.size / 2, state.doc.size / 2] };
+export const view = { center: (): Pt => center(activeArtboard()) };
 
 const editable = () => selected().filter((s) => !s.locked);
 
@@ -36,10 +36,12 @@ export function selectAll() {
 
 export function deselect() {
   state.selection = [];
+  state.artboardSelected = false;
   commit();
 }
 
 export function deleteSelection() {
+  if (!state.selection.length && state.artboardSelected) return void deleteArtboard();
   if (!state.selection.length) return;
   edit(() => {
     state.doc.shapes = shapes().filter((s) => !state.selection.includes(s.id));
@@ -55,7 +57,7 @@ export function copy() {
   state.clipboard = structuredClone(sel);
   // Also put SVG on the system clipboard so it pastes into Figma, Illustrator, etc.
   try {
-    void navigator.clipboard?.writeText(exportSvgString({ ...state.doc, shapes: sel })).catch(() => {});
+    void navigator.clipboard?.writeText(exportSvgString(sel, unionBox(sel.map(worldBox)))).catch(() => {});
   } catch {
     /* clipboard unavailable */
   }
@@ -261,12 +263,11 @@ export function setGeometry(field: GeoField, value: number, opts: EditOpts = {})
 
 export type Align = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
 
-// One shape aligns to the artboard; several align to their combined bounds.
+// One shape aligns to its artboard; several align to their combined bounds.
 export function align(how: Align) {
   const list = editable();
   if (!list.length) return;
-  const size = state.doc.size;
-  const target = list.length === 1 ? { x: 0, y: 0, w: size, h: size } : unionBox(list.map(worldBox));
+  const target = list.length === 1 ? artboardOf(list[0]) : unionBox(list.map(worldBox));
   edit(() => {
     for (const s of list) {
       const b = worldBox(s);
@@ -282,22 +283,172 @@ export function align(how: Align) {
   });
 }
 
-// ---- Document ----------------------------------------------------------
+// ---- Artboards -----------------------------------------------------------
 
-// Changing size scales the artwork (including strokes) so the icon looks the same.
-export function setArtboardSize(next: number) {
-  const size = state.doc.size;
-  if (next === size) return;
+// The artboard a shape belongs to: the one its center sits on (else the active one).
+export function artboardOf(s: Shape): Artboard {
+  const c = center(worldBox(s));
+  return artboards().find((a) => inside(a, c)) ?? activeArtboard();
+}
+
+// Shapes that move, scale and duplicate with an artboard.
+export function shapesOn(ab: Artboard) {
+  return shapes().filter((s) => inside(ab, center(worldBox(s))));
+}
+
+function moveArtboardBy(ab: Artboard, dx: number, dy: number, artwork = shapesOn(ab)) {
+  ab.x += dx;
+  ab.y += dy;
+  for (const s of artwork) moveShape(s, structuredClone(s), dx, dy);
+}
+
+const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+// Next free cell in the artboard grid (columns × gap from the prefs).
+function freeSlot(w: number, h: number): Pt {
+  const all = artboards();
+  const o = all[0] ?? { x: 0, y: 0 };
+  const { abColumns: cols, abGap: gap } = state.prefs;
+  const px = Math.max(w, ...all.map((a) => a.w)) + gap;
+  const py = Math.max(h, ...all.map((a) => a.h)) + gap;
+  for (let i = 0; ; i++) {
+    const box = { x: o.x + (i % cols) * px, y: o.y + Math.floor(i / cols) * py, w, h };
+    if (!all.some((a) => overlaps(a, box))) return [box.x, box.y];
+  }
+}
+
+export function addArtboard(): Artboard {
+  const src = activeArtboard();
+  const [x, y] = freeSlot(src.w, src.h);
+  const ab = newArtboard(nextArtboardName(), x, y, src.w);
+  ab.h = src.h;
   edit(() => {
-    const from: Box = { x: 0, y: 0, w: size, h: size };
-    const to: Box = { x: 0, y: 0, w: next, h: next };
-    for (const s of shapes()) {
-      scaleShape(s, structuredClone(s), from, to);
-      s.strokeWidth *= next / size;
-    }
-    state.doc.size = next;
+    artboards().push(ab);
+    setActiveArtboard(ab.id, true);
+  });
+  return ab;
+}
+
+// Artboard plus its artwork, placed in the next free grid cell.
+export function duplicateArtboard(id = state.activeArtboard): Artboard | undefined {
+  const src = artboardById(id);
+  if (!src) return;
+  const [x, y] = freeSlot(src.w, src.h);
+  const ab = { ...src, id: newId(), name: `${src.name}_copy`, x, y };
+  edit(() => {
+    const copies = structuredClone(shapesOn(src)).map((s) => ({ ...s, id: newId() }));
+    for (const s of copies) moveShape(s, structuredClone(s), x - src.x, y - src.y);
+    shapes().push(...copies);
+    artboards().splice(artboards().indexOf(src) + 1, 0, ab);
+    setActiveArtboard(ab.id, true);
+  });
+  return ab;
+}
+
+// Removes the artboard only; its artwork stays on the canvas (as in Illustrator).
+export function deleteArtboard(id = state.activeArtboard) {
+  if (artboards().length < 2) return false;
+  edit(() => {
+    const i = artboards().findIndex((a) => a.id === id);
+    artboards().splice(i, 1);
+    setActiveArtboard(artboards()[Math.max(0, i - 1)].id);
+  });
+  return true;
+}
+
+export function renameArtboard(id: string, name: string) {
+  const ab = artboardById(id);
+  const clean = name.trim();
+  if (!ab || !clean || clean === ab.name) return;
+  edit(() => (ab.name = clean));
+}
+
+export function moveArtboardInList(id: string, to: number) {
+  const list = artboards();
+  const from = list.findIndex((a) => a.id === id);
+  if (from < 0 || from === to) return;
+  edit(() => {
+    const [ab] = list.splice(from, 1);
+    list.splice(to > from ? to - 1 : to, 0, ab);
   });
 }
+
+// X/Y move the artboard with its artwork; W/H resize it from the top-left.
+export function setArtboardGeometry(field: 'x' | 'y' | 'w' | 'h', value: number, opts: EditOpts = {}) {
+  const ab = activeArtboard();
+  if (!Number.isFinite(value)) return;
+  const v = field === 'w' || field === 'h' ? Math.max(1, Math.round(value)) : Math.round(value);
+  edit(() => {
+    if (field === 'x') moveArtboardBy(ab, v - ab.x, 0);
+    else if (field === 'y') moveArtboardBy(ab, 0, v - ab.y);
+    else ab[field] = v;
+  }, opts);
+}
+
+// Icon size presets scale the artwork too (strokes included), so the icon looks the same.
+export function setIconSize(next: number) {
+  const ab = activeArtboard();
+  const k = next / Math.max(ab.w, ab.h);
+  if (k === 1) return;
+  edit(() => {
+    const from: Box = { ...ab };
+    const to: Box = { x: ab.x, y: ab.y, w: Math.round(ab.w * k), h: Math.round(ab.h * k) };
+    for (const s of shapesOn(ab)) {
+      scaleShape(s, structuredClone(s), from, to);
+      s.strokeWidth *= k;
+    }
+    Object.assign(ab, { w: to.w, h: to.h });
+  });
+}
+
+// Illustrator's "Rearrange All Artboards": lay them out in a grid, artwork included.
+export function arrangeArtboards(columns = state.prefs.abColumns, gap = state.prefs.abGap) {
+  state.prefs.abColumns = Math.max(1, Math.round(columns));
+  state.prefs.abGap = Math.max(0, Math.round(gap));
+  savePrefs();
+  const all = artboards();
+  const { abColumns: cols, abGap: g } = state.prefs;
+  const o = { x: Math.min(...all.map((a) => a.x)), y: Math.min(...all.map((a) => a.y)) };
+  // Uniform cells sized to the largest artboard keep the icons lined up.
+  const cw = Math.max(...all.map((a) => a.w)) + g;
+  const ch = Math.max(...all.map((a) => a.h)) + g;
+  edit(() => {
+    const artwork = all.map((ab) => shapesOn(ab)); // capture before anything moves
+    all.forEach((ab, i) => {
+      const x = o.x + (i % cols) * cw;
+      const y = o.y + Math.floor(i / cols) * ch;
+      moveArtboardBy(ab, x - ab.x, y - ab.y, artwork[i]);
+    });
+  });
+}
+
+// ---- Material icon style ------------------------------------------------
+
+export const iconStyle = (): IconStyle => state.doc.iconStyle ?? 'outlined';
+
+// Outlined / Rounded / Sharp: sets line ends, corners and rectangle corner
+// radius for every shape and for new shapes.
+export function setIconStyle(style: IconStyle) {
+  if (style === iconStyle()) return;
+  const { cap, join, radius } = ICON_STYLES[style];
+  Object.assign(state.prefs.style, { cap, join });
+  savePrefs();
+  edit(() => {
+    state.doc.iconStyle = style;
+    for (const s of shapes()) {
+      Object.assign(s, { cap, join });
+      if (s.type === 'rect') s.r = radius;
+    }
+  });
+}
+
+export function setCornerRadius(r: number, opts: EditOpts = {}) {
+  const rects = editable().filter((s) => s.type === 'rect');
+  if (!rects.length || !Number.isFinite(r)) return;
+  edit(() => rects.forEach((s) => s.type === 'rect' && (s.r = Math.max(0, r))), opts);
+}
+
+// ---- Document ----------------------------------------------------------
 
 export function renameDoc(name: string) {
   const clean = name.trim() || 'Untitled';
@@ -306,9 +457,12 @@ export function renameDoc(name: string) {
 }
 
 export function newDoc() {
-  if (shapes().length && !confirm('Start a new icon? You can undo this.')) return;
+  if (shapes().length && !confirm('Start a new document? You can undo this.')) return;
+  const size = activeArtboard().w;
   edit(() => {
-    state.doc = { name: 'Untitled', size: state.doc.size, shapes: [] };
+    const ab = newArtboard('icon_1', 0, 0, size);
+    state.doc = { name: 'Untitled', iconStyle: iconStyle(), artboards: [ab], shapes: [] };
     state.selection = [];
+    setActiveArtboard(ab.id);
   });
 }

@@ -31,6 +31,10 @@ const P: Record<string, string> = {
   alignBottom: '<path d="M4 20h16"/><rect x="7" y="6" width="3.5" height="11" rx=".5"/><rect x="13.5" y="10" width="3.5" height="7" rx=".5"/>',
   rotate: '<path d="M19 12a7 7 0 1 1-2-4.9"/><path d="M17.5 3.5V7.5H13.5"/>',
   logo: '<rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" stroke="none"/><path d="M8 16.5 12 7l4 9.5" stroke="#fff" stroke-width="2"/><circle cx="12" cy="14" r="1.6" fill="#fff" stroke="none"/>',
+  artboard: '<path d="M8 3v18M16 3v18M3 8h18M3 16h18"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  grid: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 12h16M12 4v16"/>',
   keyboard: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
 };
 

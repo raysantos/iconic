@@ -203,9 +203,27 @@ export function toBezier(s: Shape): BezierShape {
       nodes = structuredClone(s.nodes);
       closed = s.closed;
       break;
-    case 'rect':
-      nodes = corners(bbox(s)).map((p) => ({ p }));
+    case 'rect': {
+      const r = Math.min(s.r ?? 0, s.w / 2, s.h / 2);
+      if (!r) {
+        nodes = corners(bbox(s)).map((p) => ({ p }));
+        break;
+      }
+      // Two points per rounded corner, joined by a quarter-circle curve.
+      const { x, y, w, h } = s;
+      const k = r * KAPPA;
+      nodes = [
+        { p: [x + r, y], in: [x + r - k, y] },
+        { p: [x + w - r, y], out: [x + w - r + k, y] },
+        { p: [x + w, y + r], in: [x + w, y + r - k] },
+        { p: [x + w, y + h - r], out: [x + w, y + h - r + k] },
+        { p: [x + w - r, y + h], in: [x + w - r + k, y + h] },
+        { p: [x + r, y + h], out: [x + r - k, y + h] },
+        { p: [x, y + h - r], in: [x, y + h - r + k] },
+        { p: [x, y + r], out: [x, y + r - k] },
+      ];
       break;
+    }
     case 'ellipse': {
       const { cx, cy, rx, ry } = s;
       const [kx, ky] = [rx * KAPPA, ry * KAPPA];
@@ -230,7 +248,7 @@ export function toBezier(s: Shape): BezierShape {
     const c = center(bbox(s));
     nodes = mapNodes(nodes, (p) => rotate(p, s.rotation!, c));
   }
-  for (const k of ['x', 'y', 'w', 'h', 'cx', 'cy', 'rx', 'ry', 'x1', 'y1', 'x2', 'y2', 'points']) delete (base as Record<string, unknown>)[k];
+  for (const k of ['x', 'y', 'w', 'h', 'r', 'cx', 'cy', 'rx', 'ry', 'x1', 'y1', 'x2', 'y2', 'points']) delete (base as Record<string, unknown>)[k];
   return { ...(base as Shape), type: 'bezier', nodes, closed, rotation: 0 } as BezierShape;
 }
 

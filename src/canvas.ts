@@ -1,5 +1,5 @@
 // The editing surface: view (zoom/pan), rendering, and pointer tools.
-import { duplicateSelection, rotateShapes, scaleShapes, selectionBox, view as actionsView } from './actions';
+import { duplicateSelection, rotateShapes, scaleShapes, selectionBox, shapesOn, view as actionsView } from './actions';
 import {
   bbox,
   center,
@@ -16,8 +16,29 @@ import {
   unionBox,
   worldBox,
 } from './geometry';
-import type { BNode, BezierShape, Box, Pt, Shape } from './model';
-import { byId, checkpoint, commit, discardIfUnchanged, dropCheckpoint, emit, isSelected, newId, nextName, selected, shapes, state, subscribe } from './store';
+import { ICON_STYLES, type Artboard, type BNode, type BezierShape, type Box, type Pt, type Shape } from './model';
+import {
+  activeArtboard,
+  artboardById,
+  artboards,
+  byId,
+  checkpoint,
+  commit,
+  discardIfUnchanged,
+  dropCheckpoint,
+  emit,
+  inside,
+  isSelected,
+  newArtboard,
+  newId,
+  nextArtboardName,
+  nextName,
+  selected,
+  setActiveArtboard,
+  shapes,
+  state,
+  subscribe,
+} from './store';
 import { el, setAttrs, shapeGeometry, shapeToElement } from './svg';
 
 const svg = document.getElementById('canvas') as unknown as SVGSVGElement;
@@ -54,7 +75,8 @@ export function zoomTo(box: Box, fill = 0.7) {
   applyView();
 }
 
-export const fitArtboard = () => zoomTo({ x: 0, y: 0, w: state.doc.size, h: state.doc.size });
+export const fitArtboard = () => zoomTo(activeArtboard());
+export const fitAll = () => zoomTo(unionBox(artboards()), 0.85);
 
 export function fitSelection() {
   const b = selectionBox();
@@ -90,7 +112,16 @@ function eventPoint(e: PointerEvent | MouseEvent): Pt {
   return toWorld(e.clientX - r.left, e.clientY - r.top);
 }
 
-const snap = (v: number) => (state.prefs.snap ? Math.round(v * 2) / 2 : Math.round(v * 100) / 100);
+// Snap increment: ½ px, 1 px, or the major grid spacing.
+function snapStep() {
+  const p = state.prefs;
+  return p.snapTo === 'half' ? 0.5 : p.snapTo === 'grid' ? p.gridSize : 1;
+}
+const snap = (v: number) => {
+  if (!state.prefs.snap) return Math.round(v * 100) / 100;
+  const k = snapStep();
+  return Math.round(v / k) * k;
+};
 const snapPt = (p: Pt): Pt => [snap(p[0]), snap(p[1])];
 
 // ---- Rendering -----------------------------------------------------------
@@ -109,17 +140,14 @@ export function setHover(id: string | null) {
 const pointTools = new Set(['direct', 'addAnchor', 'deleteAnchor', 'convertAnchor']);
 
 export function render() {
-  const size = state.doc.size;
   world.replaceChildren();
 
-  // Artboard, its name label, and the pixel grid once zoomed in enough.
-  const label = el('text', { x: 0, y: -6 * u(), 'font-size': 11 * u() }, 'artboard-label');
-  label.textContent = state.doc.name;
-  world.append(label, el('rect', { x: 0, y: 0, width: size, height: size }, 'artboard'));
-  if (state.prefs.grid && viewState.zoom >= 6) {
-    let d = '';
-    for (let i = 1; i < size; i++) d += `M${i} 0V${size}M0 ${i}H${size}`;
-    world.append(el('path', { d, 'stroke-width': u() }, 'grid'));
+  for (const ab of artboards()) {
+    const bg = el('rect', { x: ab.x, y: ab.y, width: ab.w, height: ab.h }, 'artboard');
+    bg.dataset.artboardBg = ab.id;
+    world.append(bg);
+    if (state.prefs.keylines) world.append(keylineTemplate(ab));
+    if (state.prefs.grid) world.append(...gridLines(ab));
   }
 
   for (const s of shapes()) {
@@ -150,7 +178,73 @@ export function render() {
     overlay.append(transformBox(sel, state.tool === 'select'));
   }
 
+  // Artboard labels sit above the artwork so they stay clickable.
+  for (const ab of artboards()) world.insertBefore(artboardLabel(ab), overlay);
+  const ab = activeArtboard();
+  if (state.artboardSelected || state.tool === 'artboard') overlay.append(artboardBox(ab, state.tool === 'artboard' || state.tool === 'select'));
+
   if (marquee) overlay.append(el('rect', { x: marquee.x, y: marquee.y, width: marquee.w, height: marquee.h, 'stroke-width': u() }, 'marquee'));
+}
+
+// Pixel lines (when zoomed in enough) plus a stronger line every `gridSize` px.
+function gridLines(ab: Artboard): SVGElement[] {
+  const out: SVGElement[] = [];
+  const lines = (step: number) => {
+    let d = '';
+    for (let x = step; x < ab.w; x += step) d += `M${ab.x + x} ${ab.y}v${ab.h}`;
+    for (let y = step; y < ab.h; y += step) d += `M${ab.x} ${ab.y + y}h${ab.w}`;
+    return d;
+  };
+  if (viewState.zoom >= 6) out.push(el('path', { d: lines(1), 'stroke-width': u() }, 'grid'));
+  const g = state.prefs.gridSize;
+  if (g > 1 && viewState.zoom * g >= 6) out.push(el('path', { d: lines(g), 'stroke-width': u() }, 'grid grid-major'));
+  return out;
+}
+
+// Material Design system icon template, scaled to the artboard: 2dp padding
+// (trim area), 20dp live area, and the four keyline shapes.
+function keylineTemplate(ab: Artboard): SVGGElement {
+  const k = Math.min(ab.w, ab.h) / 24;
+  const [cx, cy] = center(ab);
+  const g = el('g', { 'stroke-width': u() }, 'keylines');
+  const pad = 2 * k;
+  g.append(
+    el('path', { d: `M${ab.x} ${ab.y}h${ab.w}v${ab.h}h${-ab.w}z M${ab.x + pad} ${ab.y + pad}v${ab.h - 2 * pad}h${ab.w - 2 * pad}v${-(ab.h - 2 * pad)}z`, 'fill-rule': 'evenodd' }, 'trim'),
+    el('circle', { cx, cy, r: 10 * k }),
+    el('rect', { x: cx - 9 * k, y: cy - 9 * k, width: 18 * k, height: 18 * k }),
+    el('rect', { x: cx - 8 * k, y: cy - 10 * k, width: 16 * k, height: 20 * k }),
+    el('rect', { x: cx - 10 * k, y: cy - 8 * k, width: 20 * k, height: 16 * k }),
+    el('path', { d: `M${cx} ${ab.y}V${ab.y + ab.h}M${ab.x} ${cy}H${ab.x + ab.w}M${ab.x} ${ab.y}L${ab.x + ab.w} ${ab.y + ab.h}M${ab.x + ab.w} ${ab.y}L${ab.x} ${ab.y + ab.h}` }, 'axes'),
+  );
+  return g;
+}
+
+function artboardLabel(ab: Artboard): SVGGElement {
+  const g = el('g', {}, 'artboard-label' + (ab.id === state.activeArtboard ? ' active' : ''));
+  g.dataset.artboard = ab.id;
+  const fs = 11 * u();
+  const text = el('text', { x: ab.x, y: ab.y - 6 * u(), 'font-size': fs });
+  text.textContent = ab.name;
+  // Generous invisible hit area: text alone is hard to click.
+  g.append(el('rect', { x: ab.x, y: ab.y - 20 * u(), width: Math.max(ab.w, (ab.name.length * 6.5 + 8) * u()), height: 18 * u() }, 'label-hit'), text);
+  return g;
+}
+
+type AbHandle = 'nw' | 'ne' | 'se' | 'sw';
+
+function artboardBox(ab: Artboard, interactive: boolean): SVGGElement {
+  const g = el('g');
+  g.append(el('rect', { x: ab.x, y: ab.y, width: ab.w, height: ab.h, 'stroke-width': 1.5 * u() }, 'bounds artboard-bounds'));
+  if (!interactive) return g;
+  const pos: Record<AbHandle, Pt> = { nw: [ab.x, ab.y], ne: [ab.x + ab.w, ab.y], se: [ab.x + ab.w, ab.y + ab.h], sw: [ab.x, ab.y + ab.h] };
+  for (const [h, [x, y]] of Object.entries(pos) as [AbHandle, Pt][]) {
+    const r = 4 * u();
+    g.append(el('rect', { x: x - r, y: y - r, width: 2 * r, height: 2 * r, 'stroke-width': u() }, 'handle-sq'));
+    const hit = el('rect', { x: x - 3 * r, y: y - 3 * r, width: 6 * r, height: 6 * r }, `handle-hit h-${h}`);
+    hit.dataset.abHandle = h;
+    g.append(hit);
+  }
+  return g;
 }
 
 function outline(s: Shape, cls: string, px: number) {
@@ -306,7 +400,10 @@ type Gesture =
   | { kind: 'create'; start: Pt; shape: Shape }
   | { kind: 'pen' }
   | { kind: 'node'; shape: BezierShape; original: BezierShape; node: number; part: NodePart }
-  | { kind: 'convert'; shape: BezierShape; node: number; moved: boolean };
+  | { kind: 'convert'; shape: BezierShape; node: number; moved: boolean }
+  | { kind: 'abMove'; ab: Artboard; start: Pt; x0: number; y0: number; artwork: Shape[]; originals: Shape[]; alt: boolean; copied: boolean }
+  | { kind: 'abResize'; ab: Artboard; handle: AbHandle; orig: Artboard }
+  | { kind: 'abCreate'; ab: Artboard; start: Pt };
 
 let gesture: Gesture | null = null;
 let spaceHeld = false;
@@ -351,6 +448,39 @@ svg.addEventListener('pointerdown', (e) => {
     const [sx, sy] = screenPt(e);
     return zoomAt(e.altKey ? 0.5 : 2, sx, sy);
   }
+
+  // Artboards: corner handles, name labels, and the Artboard tool.
+  const abHandle = target.closest<SVGElement>('[data-ab-handle]');
+  if (abHandle) {
+    const ab = activeArtboard();
+    checkpoint();
+    gesture = { kind: 'abResize', ab, handle: abHandle.dataset.abHandle as AbHandle, orig: { ...ab } };
+    return;
+  }
+  const labelId = target.closest<SVGElement>('[data-artboard]')?.dataset.artboard;
+  const bgId = target.closest<SVGElement>('[data-artboard-bg]')?.dataset.artboardBg;
+  if (labelId || (tool === 'artboard' && bgId)) {
+    const ab = artboardById((labelId ?? bgId)!)!;
+    setActiveArtboard(ab.id, true);
+    checkpoint();
+    const artwork = shapesOn(ab).filter((s) => !s.locked);
+    gesture = { kind: 'abMove', ab, start: p, x0: ab.x, y0: ab.y, artwork, originals: structuredClone(artwork), alt: e.altKey, copied: false };
+    emit();
+    return;
+  }
+  if (tool === 'artboard') {
+    checkpoint();
+    const sp: Pt = [Math.round(p[0]), Math.round(p[1])];
+    const ab = newArtboard(nextArtboardName(), sp[0], sp[1], 0);
+    artboards().push(ab);
+    setActiveArtboard(ab.id, true);
+    gesture = { kind: 'abCreate', ab, start: sp };
+    emit('live');
+    return;
+  }
+  // Clicking anywhere on an artboard makes it the active one.
+  state.artboardSelected = false;
+  if (bgId) state.activeArtboard = bgId;
 
   // Anchor points and handles.
   const nodeEl = target.closest<SVGElement>('[data-node]');
@@ -408,6 +538,9 @@ svg.addEventListener('pointerdown', (e) => {
 
   if (tool === 'select' || pointTools.has(tool)) {
     if (hitId) {
+      const c = center(worldBox(byId(hitId)!));
+      const owner = artboards().find((a) => inside(a, c));
+      if (owner) state.activeArtboard = owner.id;
       if (e.shiftKey) {
         state.selection = isSelected(hitId) ? state.selection.filter((id) => id !== hitId) : [...state.selection, hitId];
         emit();
@@ -435,7 +568,7 @@ svg.addEventListener('pointerdown', (e) => {
   const style = { ...state.prefs.style };
   const id = newId();
   let shape: Shape;
-  if (tool === 'rect') shape = { id, type: 'rect', x: sp[0], y: sp[1], w: 0, h: 0, ...style };
+  if (tool === 'rect') shape = { id, type: 'rect', x: sp[0], y: sp[1], w: 0, h: 0, r: ICON_STYLES[state.doc.iconStyle ?? 'outlined'].radius, ...style };
   else if (tool === 'ellipse') shape = { id, type: 'ellipse', cx: sp[0], cy: sp[1], rx: 0, ry: 0, ...style };
   else if (tool === 'line') shape = { id, type: 'line', x1: sp[0], y1: sp[1], x2: sp[0], y2: sp[1], ...lineStyle(style) };
   else shape = { id, type: 'path', points: [p], ...lineStyle(style), fill: 'none' };
@@ -487,6 +620,38 @@ svg.addEventListener('pointermove', (e) => {
   }
 
   switch (g.kind) {
+    case 'abMove': {
+      const dx = Math.round(p[0] - g.start[0]);
+      const dy = Math.round(p[1] - g.start[1]);
+      if (g.alt && !g.copied && (dx || dy)) {
+        // Alt-drag: the original stays put and a copy (with its artwork) moves.
+        g.artwork.forEach((s, i) => Object.assign(s, structuredClone(g.originals[i])));
+        const copy: Artboard = { ...g.ab, x: g.x0, y: g.y0, id: newId(), name: `${g.ab.name}_copy` };
+        Object.assign(g.ab, { x: g.x0, y: g.y0 });
+        const copies = structuredClone(g.originals).map((s) => ({ ...s, id: newId() }));
+        shapes().push(...copies);
+        artboards().splice(artboards().indexOf(g.ab) + 1, 0, copy);
+        Object.assign(g, { ab: copy, artwork: copies, originals: structuredClone(copies), copied: true });
+        setActiveArtboard(copy.id, true);
+      }
+      g.ab.x = g.x0 + dx;
+      g.ab.y = g.y0 + dy;
+      g.artwork.forEach((s, i) => moveShape(s, g.originals[i], dx, dy));
+      break;
+    }
+    case 'abResize':
+      resizeArtboard(g, p, e.shiftKey);
+      break;
+    case 'abCreate': {
+      let [x, y] = [Math.round(p[0]), Math.round(p[1])];
+      if (e.shiftKey) {
+        const m = Math.max(Math.abs(x - g.start[0]), Math.abs(y - g.start[1]));
+        x = g.start[0] + Math.sign(x - g.start[0] || 1) * m;
+        y = g.start[1] + Math.sign(y - g.start[1] || 1) * m;
+      }
+      Object.assign(g.ab, fromPoints([g.start, [x, y]]));
+      break;
+    }
     case 'pan': {
       const [sx, sy] = screenPt(e);
       viewState.x = g.x0 + sx - g.start[0];
@@ -573,6 +738,15 @@ function endGesture(e: PointerEvent) {
   switch (g.kind) {
     case 'pan':
       return;
+    case 'abCreate':
+      if (g.ab.w < 1 || g.ab.h < 1) {
+        // A click with the Artboard tool doesn't leave an empty artboard.
+        artboards().splice(artboards().indexOf(g.ab), 1);
+        setActiveArtboard(artboards()[0].id);
+        dropCheckpoint();
+        return finish(false);
+      }
+      break;
     case 'marquee':
       marquee = null;
       return finish(false);
@@ -623,6 +797,18 @@ function cancelGesture() {
   if (g.kind === 'create') {
     state.doc.shapes = shapes().filter((s) => s !== g.shape);
     state.selection = [];
+    dropCheckpoint();
+  } else if (g.kind === 'abCreate' || (g.kind === 'abMove' && g.copied)) {
+    artboards().splice(artboards().indexOf(g.ab), 1);
+    if (g.kind === 'abMove') state.doc.shapes = shapes().filter((s) => !g.artwork.includes(s));
+    setActiveArtboard(artboards()[0].id);
+    dropCheckpoint();
+  } else if (g.kind === 'abMove') {
+    Object.assign(g.ab, { x: g.x0, y: g.y0 });
+    g.artwork.forEach((s, i) => Object.assign(s, structuredClone(g.originals[i])));
+    dropCheckpoint();
+  } else if (g.kind === 'abResize') {
+    Object.assign(g.ab, g.orig);
     dropCheckpoint();
   } else if (g.kind === 'move' || g.kind === 'resize' || g.kind === 'rotate') {
     if (g.kind === 'move' && g.copied) state.doc.shapes = shapes().filter((s) => !g.list.includes(s));
@@ -756,6 +942,21 @@ function resize(g: Extract<Gesture, { kind: 'resize' }>, p: Pt, keepRatio: boole
     const s = g.list[0];
     moveShape(s, structuredClone(s), before[0] - after[0], before[1] - after[1]);
   }
+}
+
+// Artboard corners resize from the opposite corner, in whole pixels (Shift keeps proportions).
+function resizeArtboard(g: Extract<Gesture, { kind: 'abResize' }>, p: Pt, keepRatio: boolean) {
+  const o = g.orig;
+  const ax = g.handle.includes('w') ? o.x + o.w : o.x;
+  const ay = g.handle.includes('n') ? o.y + o.h : o.y;
+  const [px, py] = [Math.round(p[0]), Math.round(p[1])];
+  let w = Math.max(1, Math.abs(px - ax));
+  let h = Math.max(1, Math.abs(py - ay));
+  if (keepRatio) {
+    const k = Math.max(w / o.w, h / o.h);
+    [w, h] = [Math.max(1, Math.round(o.w * k)), Math.max(1, Math.round(o.h * k))];
+  }
+  Object.assign(g.ab, { x: px < ax ? ax - w : ax, y: py < ay ? ay - h : ay, w, h });
 }
 
 // ---- Pen tool ---------------------------------------------------------------

@@ -9,11 +9,27 @@ export interface Box {
   h: number;
 }
 
+export type Cap = 'round' | 'butt' | 'square';
+export type Join = 'round' | 'miter' | 'bevel';
+
 export interface Style {
   fill: string; // 'none' or a color
   stroke: string;
   strokeWidth: number;
+  cap?: Cap; // default round
+  join?: Join; // default round
 }
+
+// Material Symbols styles; each maps to stroke ends, corners and corner radius.
+export type IconStyle = 'outlined' | 'rounded' | 'sharp';
+export const ICON_STYLES: Record<IconStyle, { cap: Cap; join: Join; radius: number }> = {
+  outlined: { cap: 'butt', join: 'miter', radius: 2 },
+  rounded: { cap: 'round', join: 'round', radius: 2 },
+  sharp: { cap: 'butt', join: 'miter', radius: 0 },
+};
+
+// Optical sizes offered by Material Symbols.
+export const ICON_SIZES = [20, 24, 40, 48];
 
 export interface Base extends Style {
   id: string;
@@ -32,7 +48,7 @@ export interface BNode {
 }
 
 export type Shape =
-  | (Base & { type: 'rect'; x: number; y: number; w: number; h: number })
+  | (Base & { type: 'rect'; x: number; y: number; w: number; h: number; r?: number }) // r = corner radius
   | (Base & { type: 'ellipse'; cx: number; cy: number; rx: number; ry: number })
   | (Base & { type: 'line'; x1: number; y1: number; x2: number; y2: number })
   | (Base & { type: 'path'; points: Pt[] }) // freehand
@@ -40,14 +56,26 @@ export type Shape =
 
 export type BezierShape = Extract<Shape, { type: 'bezier' }>;
 
+// A region of the canvas that exports as one icon (like Illustrator).
+export interface Artboard {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Doc {
   name: string;
-  size: number;
-  shapes: Shape[];
+  iconStyle?: IconStyle;
+  artboards: Artboard[];
+  shapes: Shape[]; // canvas coordinates, shared by all artboards
 }
 
 export type Tool =
   | 'select' // V
+  | 'artboard' // Shift+O
   | 'direct' // A
   | 'pen' // P
   | 'addAnchor' // +
@@ -60,7 +88,6 @@ export type Tool =
   | 'hand' // H
   | 'zoom'; // Z
 
-export const SIZES = [16, 24, 32, 48]; // artboard sizes in px (viewBox 0 0 size size)
 export const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export const TYPE_LABEL: Record<Shape['type'], string> = {

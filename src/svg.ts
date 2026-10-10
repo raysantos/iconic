@@ -1,5 +1,5 @@
-import { bbox, bezierToPath, center, pointsToPath, round } from './geometry';
-import { SVG_NS, type Doc, type Shape } from './model';
+import { bbox, bezierToPath, center, intersects, pointsToPath, round, worldBox } from './geometry';
+import { SVG_NS, type Box, type Shape } from './model';
 
 export function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}, cls?: string) {
   const e = document.createElementNS(SVG_NS, tag);
@@ -18,6 +18,7 @@ export function shapeGeometry(s: Shape): SVGElement {
   switch (s.type) {
     case 'rect':
       e = el('rect', { x: s.x, y: s.y, width: s.w, height: s.h });
+      if (s.r) setAttrs(e, { rx: Math.min(s.r, s.w / 2, s.h / 2) });
       break;
     case 'ellipse':
       e = el('ellipse', { cx: s.cx, cy: s.cy, rx: s.rx, ry: s.ry });
@@ -45,14 +46,15 @@ export function shapeToElement(s: Shape): SVGElement {
     fill: s.type === 'line' ? 'none' : s.fill,
     stroke: s.strokeWidth > 0 ? s.stroke : 'none',
     'stroke-width': s.strokeWidth,
-    'stroke-linecap': 'round',
-    'stroke-linejoin': 'round',
+    'stroke-linecap': s.cap ?? 'round',
+    'stroke-linejoin': s.join ?? 'round',
   });
   return e;
 }
 
-export function exportSvgString(doc: Doc) {
-  const root = el('svg', { xmlns: SVG_NS, viewBox: `0 0 ${doc.size} ${doc.size}`, width: doc.size, height: doc.size });
-  for (const s of doc.shapes) if (!s.hidden) root.append(shapeToElement(s));
+// The shapes that overlap `box`, as a standalone SVG of that region.
+export function exportSvgString(shapes: Shape[], box: Box) {
+  const root = el('svg', { xmlns: SVG_NS, viewBox: `${round(box.x)} ${round(box.y)} ${round(box.w)} ${round(box.h)}`, width: box.w, height: box.h });
+  for (const s of shapes) if (!s.hidden && intersects(worldBox(s), box)) root.append(shapeToElement(s));
   return new XMLSerializer().serializeToString(root);
 }

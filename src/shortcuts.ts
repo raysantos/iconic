@@ -1,6 +1,6 @@
 // Adobe Illustrator-style keyboard shortcuts (Ctrl = Cmd and Alt = Option on Mac).
 import * as A from './actions';
-import { actualSize, finishPen, fitArtboard, fitSelection, isDrawingPath, penBackspace, setSpaceHeld, zoomAt } from './canvas';
+import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, isDrawingPath, penBackspace, setSpaceHeld, zoomAt } from './canvas';
 import type { Tool } from './model';
 import { commit, redo, savePrefs, state, undo } from './store';
 
@@ -28,6 +28,7 @@ export const SHORTCUTS: Shortcut[] = [
   // Tools
   { group: 'Tools', label: 'Selection', keys: ['V'], run: tool('select') },
   { group: 'Tools', label: 'Direct Selection', keys: ['A'], run: tool('direct') },
+  { group: 'Tools', label: 'Artboard', keys: ['Shift+O'], run: tool('artboard') },
   { group: 'Tools', label: 'Pen', keys: ['P'], run: tool('pen') },
   { group: 'Tools', label: 'Add Anchor Point', keys: ['+', '=', 'Shift+='], run: tool('addAnchor') },
   { group: 'Tools', label: 'Delete Anchor Point', keys: ['-'], run: tool('deleteAnchor') },
@@ -77,9 +78,11 @@ export const SHORTCUTS: Shortcut[] = [
   { group: 'View', label: 'Zoom In', keys: ['Ctrl+=', 'Ctrl+Shift+=', 'Ctrl++'], run: () => zoomAt(2) },
   { group: 'View', label: 'Zoom Out', keys: ['Ctrl+-'], run: () => zoomAt(0.5) },
   { group: 'View', label: 'Fit Artboard in Window', keys: ['Ctrl+0', 'Shift+1'], run: fitArtboard },
+  { group: 'View', label: 'Fit All Artboards', keys: ['Ctrl+Alt+0'], run: fitAll },
   { group: 'View', label: 'Actual Size', keys: ['Ctrl+1'], run: actualSize },
   { group: 'View', label: 'Zoom to Selection', keys: ['Shift+2'], run: fitSelection },
   { group: 'View', label: 'Show / Hide Grid', keys: ["Ctrl+'"], run: () => togglePref('grid', 'Grid') },
+  { group: 'View', label: 'Material Keylines', keys: ['Ctrl+;'], run: () => togglePref('keylines', 'Keylines') },
   { group: 'View', label: 'Snap to Grid', keys: ["Ctrl+Shift+'"], run: () => togglePref('snap', 'Snap to grid') },
   { group: 'View', label: 'Hide Panels', keys: ['Tab'], run: () => hooks.togglePanels() },
 
@@ -90,7 +93,7 @@ export const SHORTCUTS: Shortcut[] = [
   { group: 'File', label: 'Keyboard Shortcuts', keys: ['Ctrl+/', 'Shift+/'], run: () => hooks.openHelp() },
 ];
 
-function togglePref(key: 'grid' | 'snap', name: string) {
+function togglePref(key: 'grid' | 'snap' | 'keylines', name: string) {
   state.prefs[key] = !state.prefs[key];
   savePrefs();
   hooks.toast(`${name} ${state.prefs[key] ? 'on' : 'off'}`);
@@ -102,6 +105,7 @@ const CODE_NAMES: Record<string, string> = {
   BracketLeft: '[',
   BracketRight: ']',
   Quote: "'",
+  Semicolon: ';',
   Slash: '/',
   Backslash: '\\',
   Equal: '=',
@@ -155,7 +159,7 @@ export function installShortcuts(h: AppHooks) {
       if (e.key === 'Backspace' || e.key === 'Delete') return void (penBackspace(), e.preventDefault());
     }
     if (e.key === 'Escape') {
-      if (state.selection.length) A.deselect();
+      if (state.selection.length || state.artboardSelected) A.deselect();
       return;
     }
 
