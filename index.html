@@ -34,10 +34,19 @@
         <button id="exportSvg" title="Export SVG">SVG</button>
         <button id="exportPng" title="Export PNG">PNG</button>
       </div>
+      <div class="group">
+        <button id="toggleLayers" title="Layers">☰</button>
+      </div>
     </header>
-    <main class="stage">
-      <svg id="canvas" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"></svg>
-    </main>
+    <div class="workspace">
+      <main class="stage">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"></svg>
+      </main>
+      <aside id="layers" class="layers">
+        <h2>Layers</h2>
+        <ul id="layerList"></ul>
+      </aside>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

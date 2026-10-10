@@ -12,6 +12,8 @@ interface Style {
 
 interface Base extends Style {
   id: string;
+  name?: string;
+  hidden?: boolean;
   rotation?: number; // degrees, around the shape's bounding-box center
 }
 
@@ -199,10 +201,13 @@ function render() {
   }
   canvas.append(grid);
 
-  for (const s of shapes) canvas.append(shapeToElement(s));
+  for (const s of shapes) if (!s.hidden) canvas.append(shapeToElement(s));
 
   const sel = shapes.find((s) => s.id === selectedId);
-  if (sel && drag?.mode !== 'create') canvas.append(selectionOverlay(sel));
+  if (sel && !sel.hidden && drag?.mode !== 'create') canvas.append(selectionOverlay(sel));
+
+  // Moving/resizing doesn't change the list, so skip rebuilding it mid-drag.
+  if (!drag || drag.mode === 'create') renderLayers();
 }
 
 // Canvas units per screen pixel, so handles stay a constant on-screen size.
@@ -309,6 +314,7 @@ canvas.addEventListener('pointerdown', (e) => {
   else if (tool === 'ellipse') shape = { id, type: 'ellipse', cx: sx, cy: sy, rx: 0, ry: 0, ...style };
   else if (tool === 'line') shape = { id, type: 'line', x1: sx, y1: sy, x2: sx, y2: sy, ...style };
   else shape = { id, type: 'path', points: [p], ...style, fill: 'none', strokeWidth: style.strokeWidth || 1 };
+  shape.name = nextName(shape.type);
   shapes.push(shape);
   selectedId = id;
   drag = { mode: 'create', start: [sx, sy], shape, original: structuredClone(shape) };
@@ -480,6 +486,8 @@ document.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key.toLowerCase() === 'z') (e.shiftKey ? redo : undo)(), e.preventDefault();
   else if (mod && e.key.toLowerCase() === 'y') redo(), e.preventDefault();
+  else if (mod && e.key === ']') reorderSelected(1), e.preventDefault();
+  else if (mod && e.key === '[') reorderSelected(-1), e.preventDefault();
   else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
   else if (!mod) {
     const map: Record<string, Tool> = { v: 'select', r: 'rect', e: 'ellipse', l: 'line', p: 'pen' };
@@ -487,6 +495,138 @@ document.addEventListener('keydown', (e) => {
     if (t) setTool(t);
   }
 });
+
+// ---- Layers ------------------------------------------------------------
+
+const TYPE_LABEL: Record<Shape['type'], string> = { rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', path: 'Path' };
+
+function nextName(type: Shape['type']) {
+  return `${TYPE_LABEL[type]} ${shapes.filter((s) => s.type === type).length + 1}`;
+}
+
+const layerList = $<HTMLUListElement>('layerList');
+let renamingId: string | null = null;
+
+function renderLayers() {
+  if (renamingId) return; // don't steal focus from the rename field
+  layerList.replaceChildren();
+  if (!shapes.length) {
+    const empty = document.createElement('li');
+    empty.className = 'empty';
+    empty.textContent = 'Draw a shape to get started';
+    layerList.append(empty);
+    return;
+  }
+  // Topmost shape first, like most design tools.
+  [...shapes].reverse().forEach((s, i) => {
+    const li = document.createElement('li');
+    li.className = 'layer' + (s.id === selectedId ? ' selected' : '') + (s.hidden ? ' is-hidden' : '');
+    li.dataset.id = s.id;
+    const top = i === 0;
+    const bottom = i === shapes.length - 1;
+    li.innerHTML = `
+      <button class="eye" data-act="toggle" title="${s.hidden ? 'Show' : 'Hide'}">${s.hidden ? '◌' : '●'}</button>
+      <span class="name"></span>
+      <button data-act="up" title="Bring forward" ${top ? 'disabled' : ''}>▲</button>
+      <button data-act="down" title="Send backward" ${bottom ? 'disabled' : ''}>▼</button>`;
+    li.querySelector('.name')!.textContent = s.name ?? TYPE_LABEL[s.type];
+    layerList.append(li);
+  });
+}
+
+layerList.addEventListener('click', (e) => {
+  const li = (e.target as Element).closest<HTMLLIElement>('li.layer');
+  if (!li) return;
+  const id = li.dataset.id!;
+  const act = (e.target as Element).closest<HTMLButtonElement>('button')?.dataset.act;
+  const idx = shapes.findIndex((s) => s.id === id);
+
+  if (act === 'toggle') {
+    checkpoint();
+    shapes[idx].hidden = !shapes[idx].hidden;
+  } else if (act === 'up' || act === 'down') {
+    const to = act === 'up' ? idx + 1 : idx - 1; // later in the array = drawn on top
+    if (to < 0 || to >= shapes.length) return;
+    checkpoint();
+    [shapes[idx], shapes[to]] = [shapes[to], shapes[idx]];
+    selectedId = id;
+  } else if ((e.target as Element).closest('.name') && selectedId === id) {
+    startRename(li, shapes[idx]);
+    return;
+  } else {
+    selectedId = id;
+    render();
+    return;
+  }
+  commit();
+});
+
+// Tap a selected layer's name (or double-click) to rename it.
+layerList.addEventListener('dblclick', (e) => {
+  if (renamingId) return;
+  const li = (e.target as Element).closest<HTMLLIElement>('li.layer');
+  const s = shapes.find((x) => x.id === li?.dataset.id);
+  if (li && s) startRename(li, s);
+});
+
+function startRename(li: HTMLLIElement, s: Shape) {
+  renamingId = s.id;
+  const input = document.createElement('input');
+  input.className = 'rename';
+  input.value = s.name ?? TYPE_LABEL[s.type];
+  li.querySelector('.name')!.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = (save: boolean) => {
+    if (done) return;
+    done = true;
+    renamingId = null;
+    const name = input.value.trim();
+    if (save && name && name !== s.name) {
+      checkpoint();
+      s.name = name;
+    }
+    commit();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') finish(true);
+    if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
+function reorderSelected(delta: 1 | -1) {
+  const idx = shapes.findIndex((s) => s.id === selectedId);
+  const to = idx + delta;
+  if (idx < 0 || to < 0 || to >= shapes.length) return;
+  checkpoint();
+  [shapes[idx], shapes[to]] = [shapes[to], shapes[idx]];
+  commit();
+}
+
+const layersPanel = $<HTMLElement>('layers');
+const layersBtn = $<HTMLButtonElement>('toggleLayers');
+function setLayersOpen(open: boolean) {
+  layersPanel.hidden = !open;
+  layersBtn.classList.toggle('active', open);
+  try {
+    localStorage.setItem('iconic:layersOpen', open ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
+layersBtn.addEventListener('click', () => setLayersOpen(layersPanel.hidden));
+{
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem('iconic:layersOpen');
+  } catch {
+    /* ignore */
+  }
+  // Open by default on wide screens, closed on phones.
+  setLayersOpen(saved ? saved === '1' : matchMedia('(min-width: 700px)').matches);
+}
 
 // ---- Export ------------------------------------------------------------
 
@@ -497,6 +637,7 @@ function exportSvgString() {
   root.setAttribute('width', String(SIZE));
   root.setAttribute('height', String(SIZE));
   for (const s of shapes) {
+    if (s.hidden) continue;
     const el = shapeToElement(s);
     el.removeAttribute('data-id');
     root.append(el);
