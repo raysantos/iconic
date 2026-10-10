@@ -1,7 +1,7 @@
 // Editing commands shared by keyboard shortcuts, menus and panels.
-import { bbox, center, moveShape, rotate, scaleShape, unionBox, worldBox } from './geometry';
-import { ICON_STYLES, type Artboard, type Box, type IconStyle, type Pt, type Shape, type Style } from './model';
-import { activeArtboard, artboardById, artboards, checkpoint, commit, emit, inside, newArtboard, newId, nextArtboardName, savePrefs, selected, setActiveArtboard, shapes, state } from './store';
+import { bbox, center, moveShape, rotate, scaleKeepingRotation, scaleShape, unionBox, worldBox } from './geometry';
+import { BOOL_LABEL, ICON_STYLES, type Artboard, type BoolOp, type BooleanShape, type Box, type IconStyle, type Pt, type Shape, type Style } from './model';
+import { activeArtboard, allShapes, artboardById, artboards, checkpoint, containerOf, commit, emit, inside, newArtboard, newId, nextArtboardName, savePrefs, selected, setActiveArtboard, shapes, state } from './store';
 import { exportSvgString } from './svg';
 
 // Set by the canvas so paste lands in the middle of what you're looking at.
@@ -44,9 +44,106 @@ export function deleteSelection() {
   if (!state.selection.length && state.artboardSelected) return void deleteArtboard();
   if (!state.selection.length) return;
   edit(() => {
-    state.doc.shapes = shapes().filter((s) => !state.selection.includes(s.id));
+    for (const id of state.selection) {
+      const c = containerOf(id);
+      if (c) c.list.splice(c.list.findIndex((s) => s.id === id), 1);
+    }
+    // A boolean group left with nothing inside goes too.
+    state.doc.shapes = state.doc.shapes.filter((s) => s.type !== 'boolean' || s.children.length);
     state.selection = [];
   });
+}
+
+// A copy needs fresh ids all the way down (boolean groups contain shapes).
+export function withNewIds<T extends Shape>(s: T): T {
+  const c = { ...s, id: newId() };
+  if (c.type === 'boolean') c.children = c.children.map(withNewIds);
+  return c;
+}
+
+// ---- Boolean groups (non-destructive, like Figma) ---------------------------
+
+// Two or more shapes -> a live boolean group; one selected group -> switch its
+// operation. The shapes inside stay editable.
+export function makeBoolean(op: BoolOp): string | null {
+  const sel = editable();
+  if (sel.length === 1 && sel[0].type === 'boolean') {
+    const g = sel[0];
+    if (g.op !== op) edit(() => ((g.op = op), (g.name = nextBoolName(op))));
+    return null;
+  }
+  if (sel.length < 2) return 'Select two or more shapes';
+  const c = containerOf(sel[0].id);
+  if (!c || sel.some((s) => containerOf(s.id)?.list !== c.list)) return 'Shapes must be in the same group';
+  const list = c.list;
+  const inOrder = list.filter((s) => sel.includes(s)); // bottom to top
+  const bottom = inOrder[0];
+  const group: BooleanShape = {
+    id: newId(),
+    type: 'boolean',
+    op,
+    name: nextBoolName(op),
+    children: inOrder,
+    // Like Figma, the group takes the bottom shape's paint.
+    fill: bottom.type === 'line' || bottom.fill === 'none' ? bottom.stroke : bottom.fill,
+    stroke: bottom.stroke,
+    strokeWidth: 0,
+    cap: bottom.cap,
+    join: bottom.join,
+  };
+  edit(() => {
+    const at = list.indexOf(inOrder[inOrder.length - 1]);
+    list.splice(at + 1, 0, group);
+    for (const s of inOrder) list.splice(list.indexOf(s), 1);
+    state.selection = [group.id];
+  });
+  return null;
+}
+
+// Fix for single-path export: white shapes drawn on top to fake holes become
+// a Subtract group (everything else minus the white shapes), as Google does it.
+export function whitesToSubtract(abId: string): boolean {
+  const ab = artboardById(abId);
+  if (!ab) return false;
+  const on = shapesOn(ab).filter((s) => !s.hidden && !s.locked);
+  const isWhite = (s: Shape) => (s.type !== 'line' && s.fill !== 'none' ? s.fill : s.strokeWidth > 0 ? s.stroke : '').toUpperCase() === '#FFFFFF';
+  const whites = on.filter(isWhite);
+  const rest = on.filter((s) => !isWhite(s));
+  if (!whites.length || !rest.length) return false;
+  const list = shapes();
+  const base = rest.find((s) => s.type !== 'line' && s.fill !== 'none') ?? rest[0];
+  const color = base.type !== 'line' && base.fill !== 'none' ? base.fill : base.stroke;
+  const paint = { fill: color, stroke: base.stroke, strokeWidth: 0, cap: base.cap, join: base.join };
+  const bottom: Shape = rest.length === 1 ? rest[0] : { id: newId(), type: 'boolean', op: 'union', name: nextBoolName('union'), children: rest, ...paint };
+  const group: BooleanShape = { id: newId(), type: 'boolean', op: 'subtract', name: nextBoolName('subtract'), children: [bottom, ...whites], ...paint };
+  edit(() => {
+    const at = Math.max(...on.map((s) => list.indexOf(s)));
+    list.splice(at + 1, 0, group);
+    for (const s of on) list.splice(list.indexOf(s), 1);
+    state.selection = [group.id];
+  });
+  return true;
+}
+
+function nextBoolName(op: BoolOp) {
+  return `${BOOL_LABEL[op]} ${allShapes().filter((s) => s.type === 'boolean' && s.op === op).length + 1}`;
+}
+
+// Release (Ctrl+Shift+G): put the shapes back where the group was.
+export function releaseBoolean(): boolean {
+  const groups = editable().filter((s): s is BooleanShape => s.type === 'boolean');
+  if (!groups.length) return false;
+  edit(() => {
+    const freed: string[] = [];
+    for (const g of groups) {
+      const c = containerOf(g.id);
+      if (!c) continue;
+      c.list.splice(c.list.indexOf(g), 1, ...g.children);
+      freed.push(...g.children.map((x) => x.id));
+    }
+    state.selection = freed;
+  });
+  return true;
 }
 
 // ---- Clipboard ---------------------------------------------------------
@@ -74,7 +171,7 @@ type PasteMode = 'center' | 'inPlace' | 'front' | 'back';
 export function paste(mode: PasteMode) {
   if (!state.clipboard.length) return;
   edit(() => {
-    const clones = structuredClone(state.clipboard).map((s) => ({ ...s, id: newId(), locked: false, hidden: false }));
+    const clones = structuredClone(state.clipboard).map((s) => ({ ...withNewIds(s), locked: false, hidden: false }));
     if (mode === 'center') {
       const b = unionBox(clones.map(worldBox));
       const [vx, vy] = view.center();
@@ -93,12 +190,12 @@ export function paste(mode: PasteMode) {
 }
 
 export function duplicateSelection(dx = 0, dy = 0): Shape[] {
-  const list = shapes();
   const clones: Shape[] = [];
   for (const s of editable()) {
-    const c = { ...structuredClone(s), id: newId() };
+    const list = containerOf(s.id)?.list ?? shapes();
+    const c = withNewIds(structuredClone(s));
     moveShape(c, structuredClone(c), dx, dy);
-    list.splice(list.indexOf(s) + 1 + clones.length, 0, c);
+    list.splice(list.indexOf(s) + 1, 0, c);
     clones.push(c);
   }
   return clones;
@@ -126,10 +223,12 @@ export function nudge(dx: number, dy: number) {
 export function arrange(how: 'forward' | 'backward' | 'front' | 'back') {
   if (!state.selection.length) return;
   edit(() => {
-    const list = shapes();
+    // Arranges within the container of the first selected shape (top level or a group).
+    const list = containerOf(state.selection[0])?.list ?? shapes();
     const sel = (s: Shape) => state.selection.includes(s.id);
-    if (how === 'front') state.doc.shapes = [...list.filter((s) => !sel(s)), ...list.filter(sel)];
-    else if (how === 'back') state.doc.shapes = [...list.filter(sel), ...list.filter((s) => !sel(s))];
+    const reorder = (next: Shape[]) => list.splice(0, list.length, ...next);
+    if (how === 'front') reorder([...list.filter((s) => !sel(s)), ...list.filter(sel)]);
+    else if (how === 'back') reorder([...list.filter(sel), ...list.filter((s) => !sel(s))]);
     else if (how === 'forward') {
       for (let i = list.length - 2; i >= 0; i--) if (sel(list[i]) && !sel(list[i + 1])) [list[i], list[i + 1]] = [list[i + 1], list[i]];
     } else {
@@ -149,7 +248,7 @@ export function lockSelection() {
 }
 
 export function unlockAll() {
-  const locked = shapes().filter((s) => s.locked);
+  const locked = allShapes().filter((s) => s.locked);
   if (!locked.length) return;
   edit(() => {
     locked.forEach((s) => (s.locked = false));
@@ -166,7 +265,7 @@ export function hideSelection() {
 }
 
 export function showAll() {
-  const hidden = shapes().filter((s) => s.hidden);
+  const hidden = allShapes().filter((s) => s.hidden);
   if (!hidden.length) return;
   edit(() => {
     hidden.forEach((s) => (s.hidden = false));
@@ -208,23 +307,15 @@ export function setNone() {
 // Scale shapes from box `from` to box `to`. Rotated shapes keep their
 // rotation: their center moves with the box and their own size scales.
 export function scaleShapes(list: Shape[], originals: Shape[], from: Box, to: Box) {
-  const sx = from.w ? to.w / from.w : 1;
-  const sy = from.h ? to.h / from.h : 1;
-  list.forEach((s, i) => {
-    const o = originals[i];
-    if (!o.rotation) return scaleShape(s, o, from, to);
-    const b = bbox(o);
-    const [cx, cy] = center(b);
-    const [nx, ny] = [to.x + (cx - from.x) * sx, to.y + (cy - from.y) * sy];
-    const [w, h] = [b.w * sx, b.h * sy];
-    scaleShape(s, o, b, { x: nx - w / 2, y: ny - h / 2, w, h });
-  });
+  list.forEach((s, i) => scaleKeepingRotation(s, originals[i], from, to));
 }
 
 // Rotate shapes as a group around `pivot`.
 export function rotateShapes(list: Shape[], originals: Shape[], deg: number, pivot: Pt) {
   list.forEach((s, i) => {
     const o = originals[i];
+    // A boolean group rotates the shapes inside it, so they stay directly editable.
+    if (s.type === 'boolean' && o.type === 'boolean') return rotateShapes(s.children, o.children, deg, pivot);
     const c = center(bbox(o));
     const [nx, ny] = rotate(c, deg, pivot);
     moveShape(s, o, nx - c[0], ny - c[1]);
@@ -336,7 +427,7 @@ export function duplicateArtboard(id = state.activeArtboard): Artboard | undefin
   const [x, y] = freeSlot(src.w, src.h);
   const ab = { ...src, id: newId(), name: `${src.name}_copy`, x, y };
   edit(() => {
-    const copies = structuredClone(shapesOn(src)).map((s) => ({ ...s, id: newId() }));
+    const copies = structuredClone(shapesOn(src)).map(withNewIds);
     for (const s of copies) moveShape(s, structuredClone(s), x - src.x, y - src.y);
     shapes().push(...copies);
     artboards().splice(artboards().indexOf(src) + 1, 0, ab);
@@ -395,7 +486,7 @@ export function setIconSize(next: number) {
     const to: Box = { x: ab.x, y: ab.y, w: Math.round(ab.w * k), h: Math.round(ab.h * k) };
     for (const s of shapesOn(ab)) {
       scaleShape(s, structuredClone(s), from, to);
-      s.strokeWidth *= k;
+      for (const x of allShapes([s])) x.strokeWidth *= k;
     }
     Object.assign(ab, { w: to.w, h: to.h });
   });
@@ -435,7 +526,7 @@ export function setIconStyle(style: IconStyle) {
   savePrefs();
   edit(() => {
     state.doc.iconStyle = style;
-    for (const s of shapes()) {
+    for (const s of allShapes()) {
       Object.assign(s, { cap, join });
       if (s.type === 'rect') s.r = radius;
     }

@@ -1,7 +1,7 @@
 // Adobe Illustrator-style keyboard shortcuts (Ctrl = Cmd and Alt = Option on Mac).
 import * as A from './actions';
 import { actualSize, deleteAnchors, finishPen, fitAll, fitArtboard, fitSelection, joinPaths, nudgeAnchors, isDrawingPath, penBackspace, setSpaceHeld, zoomAt } from './canvas';
-import type { Tool } from './model';
+import type { BoolOp, Tool } from './model';
 import { commit, redo, savePrefs, state, undo } from './store';
 
 export interface AppHooks {
@@ -43,7 +43,7 @@ export const SHORTCUTS: Shortcut[] = [
 
   // Edit
   { group: 'Edit', label: 'Undo', keys: ['Ctrl+Z'], run: undo },
-  { group: 'Edit', label: 'Redo', keys: ['Ctrl+Shift+Z', 'Ctrl+Y'], run: redo },
+  { group: 'Edit', label: 'Redo', keys: ['Ctrl+Shift+Z'], run: redo },
   { group: 'Edit', label: 'Cut', keys: ['Ctrl+X'], run: A.cut },
   { group: 'Edit', label: 'Copy', keys: ['Ctrl+C'], run: A.copy },
   { group: 'Edit', label: 'Paste', keys: ['Ctrl+V'], run: () => A.paste('center') },
@@ -61,6 +61,11 @@ export const SHORTCUTS: Shortcut[] = [
   { group: 'Object', label: 'Bring Forward', keys: ['Ctrl+]'], run: () => A.arrange('forward') },
   { group: 'Object', label: 'Send Backward', keys: ['Ctrl+['], run: () => A.arrange('backward') },
   { group: 'Object', label: 'Send to Back', keys: ['Ctrl+Shift+['], run: () => A.arrange('back') },
+  { group: 'Object', label: 'Union', keys: ['Ctrl+Alt+U'], run: () => bool('union') },
+  { group: 'Object', label: 'Subtract', keys: ['Ctrl+Alt+S'], run: () => bool('subtract') },
+  { group: 'Object', label: 'Intersect', keys: ['Ctrl+Alt+I'], run: () => bool('intersect') },
+  { group: 'Object', label: 'Exclude', keys: ['Ctrl+Alt+X'], run: () => bool('exclude') },
+  { group: 'Object', label: 'Release Boolean Group', keys: ['Ctrl+Shift+G'], run: () => void A.releaseBoolean() },
   { group: 'Object', label: 'Join Paths', keys: ['Ctrl+J'], run: () => { const err = joinPaths(); if (err) hooks.toast(err); } },
   { group: 'Object', label: 'Lock Selection', keys: ['Ctrl+2'], run: A.lockSelection },
   { group: 'Object', label: 'Unlock All', keys: ['Ctrl+Alt+2'], run: A.unlockAll },
@@ -83,6 +88,7 @@ export const SHORTCUTS: Shortcut[] = [
   { group: 'View', label: 'Actual Size', keys: ['Ctrl+1'], run: actualSize },
   { group: 'View', label: 'Zoom to Selection', keys: ['Shift+2'], run: fitSelection },
   { group: 'View', label: 'Show / Hide Grid', keys: ["Ctrl+'"], run: () => togglePref('grid', 'Grid') },
+  { group: 'View', label: 'Merged Preview (export)', keys: ['Ctrl+Y'], run: () => togglePref('mergedPreview', 'Merged preview') },
   { group: 'View', label: 'Smart Guides', keys: ['Ctrl+U'], run: () => togglePref('smartGuides', 'Smart guides') },
   { group: 'View', label: 'Material Keylines', keys: ['Ctrl+;'], run: () => togglePref('keylines', 'Keylines') },
   { group: 'View', label: 'Snap to Grid', keys: ["Ctrl+Shift+'"], run: () => togglePref('snap', 'Snap to grid') },
@@ -95,7 +101,12 @@ export const SHORTCUTS: Shortcut[] = [
   { group: 'File', label: 'Keyboard Shortcuts', keys: ['Ctrl+/', 'Shift+/'], run: () => hooks.openHelp() },
 ];
 
-function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides', name: string) {
+function bool(op: BoolOp) {
+  const err = A.makeBoolean(op);
+  if (err) hooks.toast(err);
+}
+
+function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides' | 'mergedPreview', name: string) {
   state.prefs[key] = !state.prefs[key];
   savePrefs();
   hooks.toast(`${name} ${state.prefs[key] ? 'on' : 'off'}`);
@@ -138,7 +149,7 @@ export function keyFor(label: string) {
 }
 
 // Held-down keys only auto-repeat for these (like Illustrator).
-const REPEATABLE = new Set(['Ctrl+Z', 'Ctrl+Shift+Z', 'Ctrl+Y', 'Ctrl+=', 'Ctrl+Shift+=', 'Ctrl++', 'Ctrl+-', 'Ctrl+D', 'Ctrl+V']);
+const REPEATABLE = new Set(['Ctrl+Z', 'Ctrl+Shift+Z', 'Ctrl+=', 'Ctrl+Shift+=', 'Ctrl++', 'Ctrl+-', 'Ctrl+D', 'Ctrl+V']);
 
 const typing =(t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 

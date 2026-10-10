@@ -1190,3 +1190,89 @@ body.scrubbing * {
 #canvas .node-point.picked rect {
   fill: var(--accent);
 }
+
+/* ---- Inside boolean groups ------------------------------------------------ */
+
+#canvas .child-outline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.7;
+  pointer-events: none;
+}
+#canvas .child-hit {
+  fill: transparent;
+  stroke: transparent;
+}
+
+/* ---- Booleans, merged preview, export review ------------------------------ */
+
+#canvas .merged {
+  pointer-events: none;
+}
+#canvas .ghost {
+  opacity: 0; /* still clickable for selecting and editing */
+}
+
+.icon-btn.on {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.review {
+  width: min(460px, calc(100vw - 32px));
+  padding: 20px;
+  border: none;
+  border-radius: 12px;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.35);
+}
+.review::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+.review h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.issues {
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.issues li {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ui-input);
+  line-height: 1.5;
+}
+.issues li.fixed {
+  opacity: 0.6;
+}
+.secondary-btn.inline {
+  display: block;
+  width: auto;
+  height: 28px;
+  margin-top: 8px;
+  padding: 0 12px;
+}
+.fixed-note {
+  display: block;
+  margin-top: 6px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.dialog-actions .secondary-btn,
+.dialog-actions .primary-btn {
+  width: auto;
+  margin: 0;
+  padding: 0 16px;
+}

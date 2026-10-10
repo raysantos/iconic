@@ -1,9 +1,9 @@
 // Figma-style chrome: top bar, Layers panel, Design panel, menus, dialogs.
 import * as A from './actions';
 import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setCursor, setHover, viewState, zoomAt, zoomTo } from './canvas';
-import { DENSITIES, exportArtboards, fileBase, type ExportFormat } from './export';
+import { checkSinglePath, DENSITIES, exportArtboards, fileBase, type ExportFormat, type ExportIssue } from './export';
 import { icon } from './icons';
-import { ICON_SIZES, TYPE_LABEL, type Cap, type IconStyle, type Join, type Shape, type Tool } from './model';
+import { BOOL_LABEL, ICON_SIZES, TYPE_LABEL, type BoolOp, type Cap, type IconStyle, type Join, type Shape, type Tool } from './model';
 import { installShortcuts, keyFor, pretty, SHORTCUTS } from './shortcuts';
 import { activeArtboard, artboards, byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, setActiveArtboard, shapes, state, subscribe, undo } from './store';
 
@@ -178,7 +178,7 @@ function openFlyout(anchor: HTMLElement, gi: number) {
   showPop(anchor.parentElement!, menuList(items));
 }
 
-function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides') {
+function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides' | 'mergedPreview') {
   state.prefs[key] = !state.prefs[key];
   savePrefs();
   commit();
@@ -203,6 +203,7 @@ function openMenu(anchor: HTMLElement, which: string) {
         { label: 'Arrange artboards', run: () => A.arrangeArtboards() },
         { sep: true },
         { label: 'Pixel grid', keys: "Ctrl+'", checked: state.prefs.grid, run: () => togglePref('grid') },
+        { label: 'Merged preview (export)', keys: 'Ctrl+Y', checked: state.prefs.mergedPreview, run: () => togglePref('mergedPreview') },
         { label: 'Material keylines', keys: 'Ctrl+;', checked: state.prefs.keylines, run: () => togglePref('keylines') },
         { label: 'Smart guides', keys: 'Ctrl+U', checked: state.prefs.smartGuides, run: () => togglePref('smartGuides') },
         { label: 'Snap to grid', keys: "Ctrl+Shift+'", checked: state.prefs.snap, run: () => togglePref('snap') },
@@ -314,7 +315,7 @@ abList.addEventListener('dblclick', (e) => {
 });
 let renamingId: string | null = null;
 
-const TYPE_ICON: Record<Shape['type'], string> = { rect: 'rect', ellipse: 'ellipse', line: 'line', path: 'pencil', bezier: 'path' };
+const TYPE_ICON: Record<Shape['type'], string> = { rect: 'rect', ellipse: 'ellipse', line: 'line', path: 'pencil', bezier: 'path', boolean: 'union' };
 
 function renderLayers() {
   if (renamingId) return; // don't steal focus from the rename field
@@ -322,18 +323,21 @@ function renderLayers() {
     layerList.innerHTML = `<li class="layers-empty">Pick a tool and draw on the artboard.<br>Press <kbd>${pretty('Ctrl+/')}</kbd> for shortcuts.</li>`;
     return;
   }
-  layerList.innerHTML = [...shapes()]
-    .reverse() // topmost first
-    .map((s) => {
-      const cls = ['layer-row', state.selection.includes(s.id) && 'selected', s.hidden && 'is-hidden', s.locked && 'is-locked'].filter(Boolean).join(' ');
-      return `<li class="${cls}" data-id="${s.id}" role="treeitem" aria-selected="${state.selection.includes(s.id)}">
-        <span class="layer-icon">${icon(TYPE_ICON[s.type], 14)}</span>
-        <span class="layer-name">${escapeHtml(s.name ?? TYPE_LABEL[s.type])}</span>
-        <button class="row-btn${s.locked ? ' on' : ''}" data-act="lock" title="${s.locked ? 'Unlock' : 'Lock'} (${pretty('Ctrl+2')})">${icon(s.locked ? 'lock' : 'unlock', 14)}</button>
-        <button class="row-btn${s.hidden ? ' on' : ''}" data-act="eye" title="${s.hidden ? 'Show' : 'Hide'} (${pretty('Ctrl+3')})">${icon(s.hidden ? 'eyeOff' : 'eye', 14)}</button>
-      </li>`;
-    })
-    .join('');
+  // Topmost first; shapes inside boolean groups are indented under them.
+  const rows = (list: Shape[], depth: number): string[] =>
+    [...list].reverse().flatMap((s) => [row(s, depth), ...(s.type === 'boolean' ? rows(s.children, depth + 1) : [])]);
+  layerList.innerHTML = rows(shapes(), 0).join('');
+}
+
+function row(s: Shape, depth: number) {
+  const cls = ['layer-row', state.selection.includes(s.id) && 'selected', s.hidden && 'is-hidden', s.locked && 'is-locked'].filter(Boolean).join(' ');
+  const ic = s.type === 'boolean' ? s.op : TYPE_ICON[s.type];
+  return `<li class="${cls}" data-id="${s.id}" data-depth="${depth}" style="padding-left:${16 + depth * 16}px" role="treeitem" aria-level="${depth + 1}" aria-selected="${state.selection.includes(s.id)}">
+    <span class="layer-icon">${icon(ic, 14)}</span>
+    <span class="layer-name">${escapeHtml(s.name ?? TYPE_LABEL[s.type])}</span>
+    <button class="row-btn${s.locked ? ' on' : ''}" data-act="lock" title="${s.locked ? 'Unlock' : 'Lock'} (${pretty('Ctrl+2')})">${icon(s.locked ? 'lock' : 'unlock', 14)}</button>
+    <button class="row-btn${s.hidden ? ' on' : ''}" data-act="eye" title="${s.hidden ? 'Show' : 'Hide'} (${pretty('Ctrl+3')})">${icon(s.hidden ? 'eyeOff' : 'eye', 14)}</button>
+  </li>`;
 }
 
 layerList.addEventListener('click', (e) => {
@@ -396,7 +400,7 @@ const indicator = h('div', { class: 'drop-indicator' });
 
 layerList.addEventListener('pointerdown', (e) => {
   const row = (e.target as Element).closest<HTMLElement>('.layer-row');
-  if (!row || (e.target as Element).closest('[data-act], input')) return;
+  if (!row || row.dataset.depth !== '0' || (e.target as Element).closest('[data-act], input')) return;
   rowDrag = { id: row.dataset.id!, startY: e.clientY, active: false, pointerId: e.pointerId };
   if (e.pointerType === 'touch') {
     rowDrag.timer = window.setTimeout(() => rowDrag && startRowDrag(), 350);
@@ -429,7 +433,7 @@ layerList.addEventListener('pointermove', (e) => {
 });
 
 function dropSlot(clientY: number) {
-  const rows = [...layerList.querySelectorAll<HTMLElement>('.layer-row')];
+  const rows = [...layerList.querySelectorAll<HTMLElement>('.layer-row[data-depth="0"]')];
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i].getBoundingClientRect();
     if (clientY < r.top + r.height / 2) return { slot: i, y: r.top };
@@ -484,7 +488,7 @@ function renderDesign() {
   pendingDesign = false;
   const sel = selected();
   designBody.replaceChildren(
-    ...(sel.length ? [alignSection(), layoutSection(sel)] : [artboardSection(), materialSection(), gridSection()]),
+    ...(sel.length ? [alignSection(), booleanSection(sel), layoutSection(sel)] : [artboardSection(), materialSection(), gridSection()]),
     fillSection(sel),
     strokeSection(sel),
     section('Export', exportControls()),
@@ -559,6 +563,7 @@ function materialSection() {
     'Material',
     labeled('Style', style, 'Sets line ends, corners and rectangle corner radius for every shape'),
     toggleRow('Keylines', 'Ctrl+;', state.prefs.keylines, () => togglePref('keylines')),
+    toggleRow('Merged preview', 'Ctrl+Y', state.prefs.mergedPreview, () => togglePref('mergedPreview')),
   );
 }
 
@@ -594,6 +599,34 @@ function toggleRow(label: string, keys: string, on: boolean, run: () => void) {
   const input = h('input', { type: 'checkbox', checked: on, class: 'switch' });
   input.addEventListener('change', run);
   return h('label', { class: 'd-row toggle', title: pretty(keys) }, h('span', { class: 'd-label', textContent: label }), input);
+}
+
+// Union / Subtract / Intersect / Exclude (non-destructive, like Figma).
+function booleanSection(sel: Shape[]): Node {
+  const g = sel.length === 1 && sel[0].type === 'boolean' ? sel[0] : null;
+  if (!g && sel.length < 2) return h('span');
+  const row = h('div', { class: 'align-row' });
+  const ops: [BoolOp, string][] = [
+    ['union', 'Ctrl+Alt+U'],
+    ['subtract', 'Ctrl+Alt+S'],
+    ['intersect', 'Ctrl+Alt+I'],
+    ['exclude', 'Ctrl+Alt+X'],
+  ];
+  for (const [op, keys] of ops) {
+    const b = h('button', { class: 'icon-btn' + (g?.op === op ? ' on' : ''), title: `${BOOL_LABEL[op]} (${pretty(keys)})`, html: icon(op, 18) });
+    b.addEventListener('click', () => {
+      const err = A.makeBoolean(op);
+      if (err) toast(err);
+    });
+    row.append(b);
+  }
+  const kids: Node[] = [row];
+  if (g) {
+    const release = h('button', { class: 'secondary-btn', textContent: 'Release shapes', title: `Ungroup (${pretty('Ctrl+Shift+G')})` });
+    release.addEventListener('click', () => A.releaseBoolean());
+    kids.push(release, h('p', { class: 'd-hint', textContent: 'Shapes inside stay editable: double-click the result to select one.' }));
+  }
+  return section(g ? 'Boolean group' : 'Boolean', ...kids);
 }
 
 function alignSection() {
@@ -922,24 +955,72 @@ function exportControls() {
       }
       kids.push(chips);
     } else {
-      kids.push(
-        toggleRow(p.exportFormat === 'svg' ? 'Use currentColor' : 'Tintable (colorControlNormal)', '', p.currentColor, () => set('currentColor', !p.currentColor)),
-      );
+      kids.push(toggleRow('Single path (Google format)', '', p.singlePath, () => set('singlePath', !p.singlePath)));
+      if (p.exportFormat === 'svg' && p.singlePath) kids.push(toggleRow('960 grid (Material Symbols)', '', p.grid960, () => set('grid960', !p.grid960)));
+      kids.push(toggleRow(p.exportFormat === 'svg' ? 'Use currentColor' : 'Tintable (colorControlNormal)', '', p.currentColor, () => set('currentColor', !p.currentColor)));
     }
     const boards = p.exportAll ? artboards() : [activeArtboard()];
-    const ext = p.exportFormat === 'xml' ? 'xml' : p.exportFormat;
+    const ext = p.exportFormat;
     const single = boards.length === 1 && (p.exportFormat !== 'png' || p.densities.length === 1);
     const label = single ? `Export ${fileBase(boards[0])}.${ext}` : `Export ${boards.length > 1 ? `${boards.length} icons` : fileBase(boards[0])} (.zip)`;
     const go = h('button', { class: 'primary-btn', textContent: label });
     go.addEventListener('click', async () => {
+      const opts = { format: p.exportFormat, densities: p.densities, currentColor: p.currentColor, singlePath: p.singlePath, grid960: p.grid960 };
+      if (p.singlePath && p.exportFormat !== 'png') {
+        go.textContent = 'Checking…';
+        const issues = await checkSinglePath(state.doc, boards);
+        go.textContent = label;
+        if (issues.length && !(await reviewIssues(issues))) return;
+      }
       closePop();
-      await exportArtboards(state.doc, boards, { format: p.exportFormat, densities: p.densities, currentColor: p.currentColor });
+      await exportArtboards(state.doc, boards, opts);
     });
     kids.push(go);
     box.replaceChildren(...kids);
   };
   draw();
   return box;
+}
+
+// Lists what would make the merged icon differ, with fixes where possible.
+// Resolves true to export anyway, false to cancel.
+function reviewIssues(issues: ExportIssue[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    closePop();
+    const dlg = q<HTMLDialogElement>('#reviewDialog');
+    const list = h('ul', { class: 'issues' });
+    for (const it of issues) {
+      const li = h('li', {}, h('strong', { textContent: it.artboard ? `${it.artboard}: ` : '' }), it.message);
+      if (it.kind === 'white') {
+        const fix = h('button', { class: 'secondary-btn inline', textContent: 'Convert to Subtract' });
+        fix.addEventListener('click', () => {
+          const ab = artboards().find((a) => a.name === it.artboard);
+          if (ab && A.whitesToSubtract(ab.id)) {
+            li.classList.add('fixed');
+            fix.replaceWith(h('span', { class: 'fixed-note', textContent: 'Fixed' }));
+          }
+        });
+        li.append(fix);
+      }
+      list.append(li);
+    }
+    const cancel = h('button', { class: 'secondary-btn', textContent: 'Cancel' });
+    const go = h('button', { class: 'primary-btn', textContent: 'Export anyway' });
+    dlg.replaceChildren(
+      h('h2', { textContent: 'Check before exporting' }),
+      h('p', { class: 'd-hint', textContent: 'The single-path export would not match what you see:' }),
+      list,
+      h('div', { class: 'dialog-actions' }, cancel, go),
+    );
+    const done = (ok: boolean) => {
+      dlg.close();
+      resolve(ok);
+    };
+    cancel.addEventListener('click', () => done(false));
+    go.addEventListener('click', () => done(true));
+    dlg.addEventListener('cancel', () => resolve(false), { once: true });
+    dlg.showModal();
+  });
 }
 
 // ---- Help, toast, panels -----------------------------------------------------

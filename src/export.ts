@@ -1,6 +1,9 @@
 // Material-style export: SVG, Android Vector Drawable, and PNG at Android densities.
-import { bezierToPath, intersects, mapNodes, round, toBezier, worldBox } from './geometry';
+// "Google format" merges each icon into one filled path (strokes outlined), the
+// way Google ships Material icons; the working document stays editable.
+import { intersects, round, worldBox } from './geometry';
 import type { Artboard, Doc, Shape } from './model';
+import { flattenArtboard, geometryPath, hasPathOps, transformPath } from './pathops';
 import { exportSvgString } from './svg';
 
 export type ExportFormat = 'svg' | 'xml' | 'png';
@@ -18,6 +21,8 @@ export interface ExportOptions {
   format: ExportFormat;
   densities: string[]; // PNG only
   currentColor: boolean; // SVG: currentColor · XML: white + colorControlNormal tint
+  singlePath: boolean; // Google format: one merged, filled path per icon
+  grid960: boolean; // SVG: Material Symbols' 960-unit viewBox (0 -960 960 960)
 }
 
 export function download(blob: Blob, name: string) {
@@ -39,53 +44,151 @@ export const snakeName = (s: string) =>
 // Material Symbols file naming: add_circle_24dp.svg
 export const fileBase = (ab: Artboard) => `${snakeName(ab.name)}_${round(Math.max(ab.w, ab.h))}dp`;
 
-const visibleOn = (shapes: Shape[], ab: Artboard) => shapes.filter((s) => !s.hidden && intersects(worldBox(s), ab));
+export const visibleOn = (shapes: Shape[], ab: Artboard) => shapes.filter((s) => !s.hidden && intersects(worldBox(s), ab));
 
-function svgFor(doc: Doc, ab: Artboard, currentColor: boolean) {
+// The color a shape shows: its fill, or its stroke for outline-only shapes.
+export function paintColor(s: Shape): string | null {
+  if (s.type !== 'line' && s.fill !== 'none') return s.fill.toUpperCase();
+  return s.strokeWidth > 0 ? s.stroke.toUpperCase() : null;
+}
+
+// One icon color for a merged path: the color covering the most shapes.
+function iconColor(shapes: Shape[]) {
+  const counts = new Map<string, number>();
+  for (const s of shapes) {
+    const c = paintColor(s);
+    if (c) counts.set(c, (counts.get(c) ?? 0) + 1);
+  }
+  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '#000000';
+}
+
+// The editable version: one element per shape.
+function layeredSvg(doc: Doc, ab: Artboard, currentColor: boolean) {
   const svg = exportSvgString(doc.shapes, ab);
   return currentColor ? svg.replace(/(fill|stroke)="#[0-9a-fA-F]{3,8}"/g, '$1="currentColor"') : svg;
 }
 
-// Android Vector Drawable: one <path> per shape, in artboard coordinates.
-export function vectorDrawable(doc: Doc, ab: Artboard, currentColor: boolean) {
-  const color = (c: string) => (currentColor ? '@android:color/white' : c.toUpperCase());
-  const paths = visibleOn(doc.shapes, ab).map((s) => {
-    const b = toBezier(s);
-    const d = bezierToPath(mapNodes(b.nodes, ([x, y]) => [x - ab.x, y - ab.y]), b.closed);
-    const attrs = [`android:pathData="${d}"`];
-    if (s.type !== 'line' && s.fill !== 'none') attrs.push(`android:fillColor="${color(s.fill)}"`);
-    if (s.strokeWidth > 0) {
-      attrs.push(
-        `android:strokeColor="${color(s.stroke)}"`,
-        `android:strokeWidth="${round(s.strokeWidth)}"`,
-        `android:strokeLineCap="${s.cap ?? 'round'}"`,
-        `android:strokeLineJoin="${s.join ?? 'round'}"`,
-      );
-    }
-    return `  <path\n      ${attrs.join('\n      ')}/>`;
-  });
+// Google format: <svg ... viewBox="0 -960 960 960" fill="#000"><path d="…"/></svg>
+export function singlePathSvg(doc: Doc, ab: Artboard, opts: Pick<ExportOptions, 'currentColor' | 'grid960'>): string | null {
+  const shapes = visibleOn(doc.shapes, ab);
+  const k = opts.grid960 ? 960 / Math.max(ab.w, ab.h) : 1;
+  const flat = flattenArtboard(shapes, ab, k, opts.grid960 ? -ab.h * k : 0);
+  if (!flat) return null;
+  const [w, h] = [round(ab.w * k), round(ab.h * k)];
+  const viewBox = opts.grid960 ? `0 ${-h} ${w} ${h}` : `0 0 ${w} ${h}`;
+  const fill = opts.currentColor ? 'currentColor' : iconColor(shapes);
+  const rule = flat.fillRule === 'evenodd' ? ' fill-rule="evenodd"' : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" height="${round(ab.h)}px" viewBox="${viewBox}" width="${round(ab.w)}px" fill="${fill}"><path d="${flat.d}"${rule}/></svg>`;
+}
+
+// Android Vector Drawable, in artboard coordinates.
+export function vectorDrawable(doc: Doc, ab: Artboard, opts: Pick<ExportOptions, 'currentColor' | 'singlePath'>) {
+  const color = (c: string) => (opts.currentColor ? '@android:color/white' : c.toUpperCase());
+  const shapes = visibleOn(doc.shapes, ab);
+  let paths: string[];
+  const flat = opts.singlePath ? flattenArtboard(shapes, ab) : null;
+  if (flat) {
+    const attrs = [`android:pathData="${flat.d}"`, `android:fillColor="${color(iconColor(shapes))}"`];
+    if (flat.fillRule === 'evenodd') attrs.push('android:fillType="evenOdd"');
+    paths = [`  <path\n      ${attrs.join('\n      ')}/>`];
+  } else {
+    paths = shapes.map((s) => {
+      const attrs = [`android:pathData="${transformPath(geometryPath(s), 1, -ab.x, -ab.y)}"`];
+      if (s.type !== 'line' && s.fill !== 'none') attrs.push(`android:fillColor="${color(s.fill)}"`);
+      if (s.strokeWidth > 0) {
+        attrs.push(
+          `android:strokeColor="${color(s.stroke)}"`,
+          `android:strokeWidth="${round(s.strokeWidth)}"`,
+          `android:strokeLineCap="${s.cap ?? 'round'}"`,
+          `android:strokeLineJoin="${s.join ?? 'round'}"`,
+        );
+      }
+      return `  <path\n      ${attrs.join('\n      ')}/>`;
+    });
+  }
   return [
     '<vector xmlns:android="http://schemas.android.com/apk/res/android"',
     `    android:width="${round(ab.w)}dp"`,
     `    android:height="${round(ab.h)}dp"`,
     `    android:viewportWidth="${round(ab.w)}"`,
-    `    android:viewportHeight="${round(ab.h)}"${currentColor ? '\n    android:tint="?attr/colorControlNormal"' : ''}>`,
+    `    android:viewportHeight="${round(ab.h)}"${opts.currentColor ? '\n    android:tint="?attr/colorControlNormal"' : ''}>`,
     ...paths,
     '</vector>',
     '',
   ].join('\n');
 }
 
-async function renderPng(svg: string, w: number, h: number): Promise<Uint8Array> {
+async function rasterize(svg: string, w: number, h: number): Promise<HTMLCanvasElement> {
   const img = new Image();
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   await img.decode();
   const c = document.createElement('canvas');
   [c.width, c.height] = [w, h];
   c.getContext('2d')!.drawImage(img, 0, 0, w, h);
+  return c;
+}
+
+async function renderPng(svg: string, w: number, h: number): Promise<Uint8Array> {
+  const c = await rasterize(svg, w, h);
   const blob = await new Promise<Blob>((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG encode failed'))), 'image/png'));
   return new Uint8Array(await blob.arrayBuffer());
 }
+
+// ---- Checks before a single-path export ----------------------------------------
+
+export interface ExportIssue {
+  artboard: string;
+  kind: 'colors' | 'white' | 'outside' | 'pixels' | 'engine';
+  message: string;
+}
+
+// Things that would make the merged icon look different from the working one.
+export async function checkSinglePath(doc: Doc, boards: Artboard[]): Promise<ExportIssue[]> {
+  const issues: ExportIssue[] = [];
+  if (!hasPathOps()) return [{ artboard: '', kind: 'engine', message: 'The geometry engine is still loading — try again in a moment.' }];
+  for (const ab of boards) {
+    const shapes = visibleOn(doc.shapes, ab);
+    const colors = new Set(shapes.map(paintColor).filter(Boolean));
+    const whites = shapes.filter((s) => paintColor(s) === '#FFFFFF');
+    if (whites.length && colors.size > 1) {
+      issues.push({ artboard: ab.name, kind: 'white', message: `${whites.length} white shape${whites.length > 1 ? 's' : ''} will turn into the icon color instead of cutting a hole. Use Subtract.` });
+    } else if (colors.size > 1) {
+      issues.push({ artboard: ab.name, kind: 'colors', message: `Uses ${colors.size} colors; a single path has one color.` });
+    }
+    if (shapes.some((s) => {
+      const b = worldBox(s);
+      return b.x < ab.x - 0.01 || b.y < ab.y - 0.01 || b.x + b.w > ab.x + ab.w + 0.01 || b.y + b.h > ab.y + ab.h + 0.01;
+    })) {
+      issues.push({ artboard: ab.name, kind: 'outside', message: 'Artwork outside the artboard will be clipped.' });
+    }
+    // Pixel check: the merged path must render like the working version.
+    const flat = singlePathSvg(doc, ab, { currentColor: false, grid960: false });
+    if (!flat) {
+      issues.push({ artboard: ab.name, kind: 'engine', message: 'Could not merge this icon; it will export as separate shapes.' });
+      continue;
+    }
+    const diff = await pixelDifference(layeredSvg(doc, ab, false), flat, ab);
+    if (diff > 0.002) issues.push({ artboard: ab.name, kind: 'pixels', message: `Merged icon differs from the working version on ${(diff * 100).toFixed(1)}% of pixels.` });
+  }
+  return issues;
+}
+
+// Share of pixels that differ visibly between two renderings (at 8x).
+async function pixelDifference(a: string, b: string, ab: Artboard): Promise<number> {
+  const k = 8;
+  const [w, h] = [Math.max(1, Math.round(ab.w * k)), Math.max(1, Math.round(ab.h * k))];
+  const [ca, cb] = await Promise.all([rasterize(a, w, h), rasterize(b, w, h)]);
+  const da = ca.getContext('2d')!.getImageData(0, 0, w, h).data;
+  const db = cb.getContext('2d')!.getImageData(0, 0, w, h).data;
+  let bad = 0;
+  for (let i = 0; i < da.length; i += 4) {
+    const d = Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]) + Math.abs(da[i + 3] - db[i + 3]);
+    if (d > 96) bad++; // ignore anti-aliasing noise along edges
+  }
+  return bad / (w * h);
+}
+
+// ---- Export --------------------------------------------------------------------
 
 // One file downloads as-is; several are bundled into a .zip
 // (PNGs go into Android drawable-<density>/ folders).
@@ -102,10 +205,13 @@ export async function exportArtboards(doc: Doc, boards: Artboard[], opts: Export
 
   for (const ab of boards) {
     const base = unique(fileBase(ab));
-    if (opts.format === 'svg') files.push({ name: `${base}.svg`, data: enc.encode(svgFor(doc, ab, opts.currentColor)), type: 'image/svg+xml' });
-    else if (opts.format === 'xml') files.push({ name: `${base}.xml`, data: enc.encode(vectorDrawable(doc, ab, opts.currentColor)), type: 'text/xml' });
-    else {
-      const svg = svgFor(doc, ab, false);
+    if (opts.format === 'svg') {
+      const svg = (opts.singlePath && singlePathSvg(doc, ab, opts)) || layeredSvg(doc, ab, opts.currentColor);
+      files.push({ name: `${base}.svg`, data: enc.encode(svg), type: 'image/svg+xml' });
+    } else if (opts.format === 'xml') {
+      files.push({ name: `${base}.xml`, data: enc.encode(vectorDrawable(doc, ab, opts)), type: 'text/xml' });
+    } else {
+      const svg = layeredSvg(doc, ab, false);
       for (const d of densities) {
         const data = await renderPng(svg, Math.max(1, Math.round(ab.w * d.scale)), Math.max(1, Math.round(ab.h * d.scale)));
         files.push({ name: densities.length > 1 ? `drawable-${d.name}/${base}.png` : `${base}.png`, data, type: 'image/png' });

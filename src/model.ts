@@ -52,9 +52,15 @@ export type Shape =
   | (Base & { type: 'ellipse'; cx: number; cy: number; rx: number; ry: number })
   | (Base & { type: 'line'; x1: number; y1: number; x2: number; y2: number })
   | (Base & { type: 'path'; points: Pt[] }) // freehand
-  | (Base & { type: 'bezier'; nodes: BNode[]; closed: boolean });
+  | (Base & { type: 'bezier'; nodes: BNode[]; closed: boolean })
+  // Non-destructive boolean group: children stay editable, the result is live.
+  | (Base & { type: 'boolean'; op: BoolOp; children: Shape[] });
 
 export type BezierShape = Extract<Shape, { type: 'bezier' }>;
+export type BooleanShape = Extract<Shape, { type: 'boolean' }>;
+
+export type BoolOp = 'union' | 'subtract' | 'intersect' | 'exclude';
+export const BOOL_LABEL: Record<BoolOp, string> = { union: 'Union', subtract: 'Subtract', intersect: 'Intersect', exclude: 'Exclude' };
 
 // A region of the canvas that exports as one icon (like Illustrator).
 export interface Artboard {
@@ -96,4 +102,5 @@ export const TYPE_LABEL: Record<Shape['type'], string> = {
   line: 'Line',
   path: 'Pencil',
   bezier: 'Path',
+  boolean: 'Boolean',
 };

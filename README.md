@@ -11,7 +11,17 @@ A vector editor for designing **Google Material icons**, on PC and phone. Figma-
 - **Defaults:** 24dp artboards, solid black fill, whole-pixel snapping, 2dp corner radius on rectangles
 - **Optical sizes:** 20 / 24 / 40 / 48 dp presets (scale the artwork)
 - **snake_case names** (`arrow_back`) and Material Symbols file names (`arrow_back_24dp.svg`)
-- **Export:** SVG (optional `currentColor`), **Android Vector Drawable** XML (optional `colorControlNormal` tint), PNG at Android densities (mdpi–xxxhdpi, zipped into `drawable-*` folders); one artboard or all of them
+- **Google-format export (default):** each icon becomes **one filled path** — strokes outlined, shapes merged, clipped to the artboard — on Material Symbols' 960-unit grid (`viewBox="0 -960 960 960"`), exactly like Google's downloads. Your document stays editable.
+- **Export checks:** before a single-path export, Iconic renders the working icon and the merged path and compares them pixel by pixel, and warns about multiple colors, white shapes faking holes (one-click **Convert to Subtract**) and artwork outside the artboard
+- **Merged preview** (`Ctrl+Y`): see every icon exactly as it will export, while still editing the shapes
+- **Formats:** SVG (optional `currentColor`), **Android Vector Drawable** XML (optional `colorControlNormal` tint), PNG at Android densities (mdpi–xxxhdpi, zipped into `drawable-*` folders); one artboard or all of them
+
+## Boolean groups (non-destructive)
+
+- **Union, Subtract, Intersect, Exclude** (`Ctrl+Alt+U / S / I / X`) create a live boolean group: the shapes inside stay fully editable and the result updates as you change them
+- Switch the operation any time; **Release** (`Ctrl+Shift+G`) gives the shapes back
+- **Double-click** the result to select a shape inside; groups appear as a tree in Layers
+- Powered by **Skia PathOps**, Google's path engine from Chrome and Android, running as WebAssembly
 
 ## Artboards (an icon set on one canvas)
 
@@ -57,7 +67,7 @@ npm run dev
 
 `npm run dev` listens on your local network, so you can open the printed `Network:` URL on your phone (same Wi-Fi) to test touch.
 
-Source layout: `src/model.ts` (types), `geometry.ts` (shape math, Bezier), `fit.ts` (curve fitting), `guides.ts` (smart guides), `store.ts` (document, selection, undo), `actions.ts` (editing commands), `canvas.ts` (view and tools), `ui.ts` (panels, menus), `shortcuts.ts` (keymap), `export.ts` (SVG / Android / PNG), `svg.ts`, `icons.ts`.
+Source layout: `src/model.ts` (types), `geometry.ts` (shape math, Bezier), `fit.ts` (curve fitting), `guides.ts` (smart guides), `pathops.ts` (Skia booleans / outline stroke), `store.ts` (document, selection, undo), `actions.ts` (editing commands), `canvas.ts` (view and tools), `ui.ts` (panels, menus), `shortcuts.ts` (keymap), `export.ts` (SVG / Android / PNG), `svg.ts`, `icons.ts`.
 
 ## Build
 
@@ -69,7 +79,8 @@ Output goes to `dist/`. Every push to `main` deploys automatically to GitHub Pag
 
 ## Roadmap ideas
 
-- Outline Stroke and Pathfinder (unite / subtract / intersect), so icons export as single filled paths like Google's
+- SVG import (Figma / Illustrator files) and round-trip tests
+- Destructive Outline Stroke / Flatten commands
 - Groups (`Ctrl+G`)
 - Icon font / sprite export
 

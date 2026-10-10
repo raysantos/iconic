@@ -1,4 +1,5 @@
 import { bbox, bezierToPath, center, intersects, pointsToPath, round, worldBox } from './geometry';
+import { booleanResult, geometryPath } from './pathops';
 import { SVG_NS, type Box, type Shape } from './model';
 
 export function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}, cls?: string) {
@@ -32,6 +33,12 @@ export function shapeGeometry(s: Shape): SVGElement {
     case 'bezier':
       e = el('path', { d: bezierToPath(s.nodes, s.closed) });
       break;
+    case 'boolean': {
+      const r = booleanResult(s);
+      // Until the geometry engine has loaded, show the children merged visually.
+      e = el('path', { d: r ? r.d : s.children.filter((c) => !c.hidden).map(geometryPath).join(' '), 'fill-rule': r?.fillRule ?? 'nonzero' });
+      break;
+    }
   }
   if (s.rotation) {
     const [cx, cy] = center(bbox(s));

@@ -1,5 +1,5 @@
 // The editing surface: view (zoom/pan), rendering, and pointer tools.
-import { duplicateSelection, rotateShapes, scaleShapes, selectionBox, shapesOn, view as actionsView } from './actions';
+import { duplicateSelection, rotateShapes, scaleShapes, selectionBox, shapesOn, view as actionsView, withNewIds } from './actions';
 import {
   bbox,
   center,
@@ -15,9 +15,11 @@ import {
   unionBox,
   worldBox,
 } from './geometry';
-import { ICON_STYLES, type Artboard, type BNode, type BezierShape, type Box, type Pt, type Shape } from './model';
+import { ICON_STYLES, type Artboard, type BNode, type BezierShape, type BooleanShape, type Box, type Pt, type Shape } from './model';
 import {
   activeArtboard,
+  allShapes,
+  containerOf,
   artboardById,
   artboards,
   byId,
@@ -38,8 +40,10 @@ import {
   state,
   subscribe,
 } from './store';
+import { paintColor, visibleOn } from './export';
 import { cubicsToNodes, fitCurve, removeAnchorSmooth, reverseNodes } from './fit';
 import { collectTargets, smartOn, snapBox, snapPoint, type Guide } from './guides';
+import { flattenArtboard, hasPathOps } from './pathops';
 import { el, setAttrs, shapeGeometry, shapeToElement } from './svg';
 
 const svg = document.getElementById('canvas') as unknown as SVGSVGElement;
@@ -189,12 +193,27 @@ export function render() {
     if (state.prefs.grid) world.append(...gridLines(ab));
   }
 
+  // Merged preview (Ctrl+Y): each icon as the single path it exports to. The
+  // real shapes stay on top, invisible, so they can still be picked and edited.
+  const merged = state.prefs.mergedPreview && hasPathOps();
+  if (merged) {
+    for (const ab of artboards()) {
+      const on = visibleOn(shapes(), ab);
+      const flat = flattenArtboard(on, ab);
+      if (!flat?.d) continue;
+      const color = on.map(paintColor).find(Boolean) ?? '#000000';
+      world.append(el('path', { d: flat.d, transform: `translate(${ab.x} ${ab.y})`, fill: color, 'fill-rule': flat.fillRule }, 'merged'));
+    }
+  }
+
   for (const s of shapes()) {
     if (s.hidden) continue;
     const e = shapeToElement(s);
     e.dataset.id = s.id;
     if (s.locked) e.classList.add('locked');
+    if (merged) e.classList.add('ghost');
     world.append(e);
+    if (s.type === 'boolean' && isOpen(s)) world.append(groupInterior(s));
   }
 
   const overlay = el('g', {}, 'overlay');
@@ -425,7 +444,7 @@ function ensureBezier(id: string): BezierShape {
   const s = byId(id)!;
   if (s.type === 'bezier' && !s.rotation) return s;
   const b = toBezier(s);
-  const list = shapes();
+  const list = containerOf(id)?.list ?? shapes(); // may be inside a boolean group
   list[list.indexOf(s)] = b;
   return b;
 }
@@ -676,7 +695,7 @@ svg.addEventListener('pointermove', (e) => {
         g.artwork.forEach((s, i) => Object.assign(s, structuredClone(g.originals[i])));
         const copy: Artboard = { ...g.ab, x: g.x0, y: g.y0, id: newId(), name: `${g.ab.name}_copy` };
         Object.assign(g.ab, { x: g.x0, y: g.y0 });
-        const copies = structuredClone(g.originals).map((s) => ({ ...s, id: newId() }));
+        const copies = structuredClone(g.originals).map(withNewIds);
         shapes().push(...copies);
         artboards().splice(artboards().indexOf(g.ab) + 1, 0, copy);
         Object.assign(g, { ab: copy, artwork: copies, originals: structuredClone(copies), copied: true });
@@ -908,7 +927,57 @@ svg.addEventListener(
 );
 
 // Double-click a point with the Direct Selection tool: corner <-> smooth.
+// ---- Inside boolean groups ---------------------------------------------------
+
+// A group is "open" while something inside it is selected (like Figma).
+function isOpen(g: BooleanShape) {
+  return allShapes(g.children).some((c) => state.selection.includes(c.id));
+}
+
+// Outlines and click targets for the shapes inside an open group.
+function groupInterior(g: BooleanShape): SVGGElement {
+  const out = el('g', {}, 'group-interior');
+  for (const c of g.children) {
+    if (c.hidden) continue;
+    const line = shapeGeometry(c);
+    line.setAttribute('class', 'child-outline');
+    line.setAttribute('stroke-width', String(u()));
+    const hit = shapeGeometry(c);
+    hit.setAttribute('class', 'child-hit');
+    hit.setAttribute('stroke-width', String(Math.max(c.strokeWidth, 8 * u())));
+    hit.dataset.id = c.id;
+    out.append(line, hit);
+    if (c.type === 'boolean' && isOpen(c)) out.append(groupInterior(c));
+  }
+  return out;
+}
+
+// The innermost shape of a group under a point (tested against real geometry).
+function childAt(g: BooleanShape, p: Pt): Shape | null {
+  for (const c of [...g.children].reverse()) {
+    if (c.hidden) continue;
+    const probe = shapeGeometry(c) as SVGGeometryElement;
+    probe.setAttribute('stroke-width', String(Math.max(c.strokeWidth, 6 * u())));
+    world.append(probe);
+    const pt = new DOMPoint(p[0], p[1]);
+    const hit = probe.isPointInFill(pt) || probe.isPointInStroke(pt);
+    probe.remove();
+    if (hit) return c.type === 'boolean' ? (childAt(c, p) ?? c) : c;
+  }
+  return null;
+}
+
 svg.addEventListener('dblclick', (e) => {
+  // Double-click a boolean group to select the shape inside it.
+  const groupEl = (e.target as Element).closest<SVGElement>('[data-id]');
+  const group = groupEl && byId(groupEl.dataset.id!);
+  if (group?.type === 'boolean' && (state.tool === 'select' || pointTools.has(state.tool))) {
+    const child = childAt(group, eventPoint(e));
+    if (child) {
+      state.selection = [child.id];
+      return emit();
+    }
+  }
   const nodeEl = (e.target as Element).closest<SVGElement>('[data-node]');
   if (!nodeEl?.dataset.sid || nodeEl.dataset.part !== 'p') return;
   checkpoint();

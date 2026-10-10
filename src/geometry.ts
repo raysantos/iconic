@@ -1,4 +1,5 @@
 import type { BNode, BezierShape, Box, Pt, Shape } from './model';
+import { booleanResult } from './pathops';
 
 export const round = (v: number) => Math.round(v * 100) / 100;
 
@@ -18,6 +19,13 @@ export function bbox(s: Shape): Box {
       return fromPoints(s.points);
     case 'bezier':
       return bezierBox(s.nodes, s.closed);
+    case 'boolean': {
+      // The live result's bounds; before the geometry engine loads, the children's.
+      const r = booleanResult(s)?.bounds;
+      if (r) return r;
+      const kids = s.children.filter((c) => !c.hidden);
+      return kids.length ? unionBox(kids.map(worldBox)) : { x: 0, y: 0, w: 0, h: 0 };
+    }
   }
 }
 
@@ -67,6 +75,20 @@ export function scaleShape(s: Shape, o: Shape, a: Box, b: Box) {
   else if (s.type === 'line' && o.type === 'line') Object.assign(s, { x1: mx(o.x1), y1: my(o.y1), x2: mx(o.x2), y2: my(o.y2) });
   else if (s.type === 'path' && o.type === 'path') s.points = o.points.map(([x, y]) => [mx(x), my(y)]);
   else if (s.type === 'bezier' && o.type === 'bezier') s.nodes = mapNodes(o.nodes, ([x, y]) => [mx(x), my(y)]);
+  else if (s.type === 'boolean' && o.type === 'boolean') s.children.forEach((c, i) => scaleKeepingRotation(c, o.children[i], a, b));
+}
+
+// Scale from box `a` to `b`; a rotated shape keeps its rotation (its center
+// moves with the box and its own size scales).
+export function scaleKeepingRotation(s: Shape, o: Shape, a: Box, b: Box) {
+  if (!o.rotation) return scaleShape(s, o, a, b);
+  const sx = a.w ? b.w / a.w : 1;
+  const sy = a.h ? b.h / a.h : 1;
+  const own = bbox(o);
+  const [cx, cy] = center(own);
+  const [nx, ny] = [b.x + (cx - a.x) * sx, b.y + (cy - a.y) * sy];
+  const [w, h] = [own.w * sx, own.h * sy];
+  scaleShape(s, o, own, { x: nx - w / 2, y: ny - h / 2, w, h });
 }
 
 export function moveShape(s: Shape, o: Shape, dx: number, dy: number) {
@@ -78,6 +100,7 @@ export function isEmpty(s: Shape) {
   if (s.type === 'ellipse') return s.rx === 0 || s.ry === 0;
   if (s.type === 'line') return s.x1 === s.x2 && s.y1 === s.y2;
   if (s.type === 'bezier') return s.nodes.length < 2;
+  if (s.type === 'boolean') return !s.children.length;
   return s.points.length < 2;
 }
 
@@ -203,6 +226,9 @@ export function toBezier(s: Shape): BezierShape {
       nodes = structuredClone(s.nodes);
       closed = s.closed;
       break;
+    case 'boolean':
+      nodes = []; // no editable points of its own; edit the shapes inside
+      break;
     case 'rect': {
       const r = Math.min(s.r ?? 0, s.w / 2, s.h / 2);
       if (!r) {
@@ -248,7 +274,7 @@ export function toBezier(s: Shape): BezierShape {
     const c = center(bbox(s));
     nodes = mapNodes(nodes, (p) => rotate(p, s.rotation!, c));
   }
-  for (const k of ['x', 'y', 'w', 'h', 'r', 'cx', 'cy', 'rx', 'ry', 'x1', 'y1', 'x2', 'y2', 'points']) delete (base as Record<string, unknown>)[k];
+  for (const k of ['x', 'y', 'w', 'h', 'r', 'cx', 'cy', 'rx', 'ry', 'x1', 'y1', 'x2', 'y2', 'points', 'children', 'op']) delete (base as Record<string, unknown>)[k];
   return { ...(base as Shape), type: 'bezier', nodes, closed, rotation: 0 } as BezierShape;
 }
 

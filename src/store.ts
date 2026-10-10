@@ -18,6 +18,9 @@ interface Prefs {
   exportAll: boolean; // all artboards vs the active one
   densities: string[]; // Android PNG densities
   currentColor: boolean;
+  singlePath: boolean; // Google format export
+  grid960: boolean; // Material Symbols 960-unit SVG
+  mergedPreview: boolean; // show icons as their merged single path (Ctrl+Y)
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -35,6 +38,9 @@ const DEFAULT_PREFS: Prefs = {
   exportAll: false,
   densities: ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'],
   currentColor: false,
+  singlePath: true,
+  grid960: true,
+  mergedPreview: false,
 };
 
 export const state = {
@@ -127,11 +133,11 @@ export const dropCheckpoint = () => undoStack.pop();
 
 function restore(json: string) {
   state.doc = JSON.parse(json);
-  const ids = new Set(state.doc.shapes.map((s) => s.id));
+  const ids = new Set(allShapes().map((s) => s.id));
   state.selection = state.selection.filter((id) => ids.has(id));
   // Keep selected points that still exist (as Illustrator does after undo).
   state.anchors = state.anchors.filter((a) => {
-    const s = state.doc.shapes.find((x) => x.id === a.sid);
+    const s = allShapes().find((x) => x.id === a.sid);
     return s && (s.type !== 'bezier' || a.i < s.nodes.length);
   });
   if (!state.doc.artboards.some((a) => a.id === state.activeArtboard)) {
@@ -158,9 +164,27 @@ export function redo() {
 
 // ---- Queries -----------------------------------------------------------
 
-export const shapes = () => state.doc.shapes;
-export const byId = (id: string) => state.doc.shapes.find((s) => s.id === id);
-export const selected = () => state.doc.shapes.filter((s) => state.selection.includes(s.id));
+export const shapes = () => state.doc.shapes; // top level
+
+// Every shape, including those inside boolean groups (depth-first, bottom to top).
+export function allShapes(list = state.doc.shapes): Shape[] {
+  return list.flatMap((s) => (s.type === 'boolean' ? [s, ...allShapes(s.children)] : [s]));
+}
+
+// The array holding a shape (top level or a boolean group's children) and its group.
+export function containerOf(id: string, list = state.doc.shapes, owner: Shape | null = null): { list: Shape[]; owner: Shape | null } | null {
+  for (const s of list) {
+    if (s.id === id) return { list, owner };
+    if (s.type === 'boolean') {
+      const hit = containerOf(id, s.children, s);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+export const byId = (id: string) => allShapes().find((s) => s.id === id);
+export const selected = () => allShapes().filter((s) => state.selection.includes(s.id));
 export const isSelected = (id: string) => state.selection.includes(id);
 
 export function select(ids: string[]) {

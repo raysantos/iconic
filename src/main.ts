@@ -1,9 +1,13 @@
 import './style.css';
 import './canvas';
-import { state } from './store';
+import { pathOpsReady } from './pathops';
+import { emit, state } from './store';
 import { initUI } from './ui';
 
 initUI();
+
+// Boolean groups render once Google's geometry engine (WebAssembly) has loaded.
+void pathOpsReady.then(() => emit());
 
 // Handy for debugging in the browser console during development.
 if (import.meta.env.DEV) Object.assign(window, { iconic: { state } });
