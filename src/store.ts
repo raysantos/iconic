@@ -9,6 +9,7 @@ interface Prefs {
   grid: boolean;
   snap: boolean;
   keylines: boolean; // Material icon template overlay
+  smartGuides: boolean; // Ctrl+U
   gridSize: number; // major grid spacing in px (1 = pixel grid only)
   snapTo: 'half' | 'pixel' | 'grid';
   abColumns: number; // artboard grid layout
@@ -25,6 +26,7 @@ const DEFAULT_PREFS: Prefs = {
   grid: true,
   snap: true,
   keylines: true,
+  smartGuides: true,
   gridSize: 1,
   snapTo: 'pixel',
   abColumns: 4,
@@ -39,6 +41,8 @@ export const state = {
   doc: loadDoc(),
   prefs: loadPrefs(),
   selection: [] as string[],
+  // Direct Selection: individually selected anchor points.
+  anchors: [] as { sid: string; i: number }[],
   activeArtboard: '', // the artboard that align, icon size and export use
   artboardSelected: false, // the active artboard itself is selected (not shapes)
   tool: 'select' as Tool,
@@ -125,6 +129,11 @@ function restore(json: string) {
   state.doc = JSON.parse(json);
   const ids = new Set(state.doc.shapes.map((s) => s.id));
   state.selection = state.selection.filter((id) => ids.has(id));
+  // Keep selected points that still exist (as Illustrator does after undo).
+  state.anchors = state.anchors.filter((a) => {
+    const s = state.doc.shapes.find((x) => x.id === a.sid);
+    return s && (s.type !== 'bezier' || a.i < s.nodes.length);
+  });
   if (!state.doc.artboards.some((a) => a.id === state.activeArtboard)) {
     state.activeArtboard = state.doc.artboards[0].id;
     state.artboardSelected = false;

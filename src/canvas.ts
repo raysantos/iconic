@@ -10,7 +10,6 @@ import {
   nearestOnPath,
   rotate,
   scaleShape,
-  simplify,
   splitSegment,
   toBezier,
   unionBox,
@@ -39,6 +38,8 @@ import {
   state,
   subscribe,
 } from './store';
+import { cubicsToNodes, fitCurve, removeAnchorSmooth, reverseNodes } from './fit';
+import { collectTargets, smartOn, snapBox, snapPoint, type Guide } from './guides';
 import { el, setAttrs, shapeGeometry, shapeToElement } from './svg';
 
 const svg = document.getElementById('canvas') as unknown as SVGSVGElement;
@@ -124,6 +125,44 @@ const snap = (v: number) => {
 };
 const snapPt = (p: Pt): Pt => [snap(p[0]), snap(p[1])];
 
+// ---- Smart guides ----------------------------------------------------------
+
+let guides: Guide[] = [];
+let targetCache: ReturnType<typeof collectTargets> | null = null; // per gesture
+
+function targets(exclude: Iterable<string> = [], skip?: { sid: string; i: number }) {
+  return (targetCache ??= collectTargets(new Set(exclude), skip));
+}
+
+// Snap a point with smart guides; any axis they don't catch falls back to the
+// grid (unless `grid` is false, e.g. for Bezier handles).
+function smartPoint(p: Pt, exclude: Iterable<string> = [], skip?: { sid: string; i: number }, grid = true): Pt {
+  if (!smartOn()) {
+    guides = [];
+    return grid ? snapPt(p) : p;
+  }
+  const r = snapPoint(p, targets(exclude, skip), viewState.zoom);
+  guides = r.guides;
+  return [r.x || !grid ? r.p[0] : snap(p[0]), r.y || !grid ? r.p[1] : snap(p[1])];
+}
+
+function guideOverlay(): SVGGElement {
+  const g = el('g', {}, 'smart-guides');
+  for (const gd of guides) {
+    const [[x1, y1], [x2, y2]] = gd.line;
+    if (x1 !== x2 || y1 !== y2) g.append(el('line', { x1, y1, x2, y2, 'stroke-width': u() }, 'smart-guide'));
+    if (gd.label) {
+      const [x, y] = gd.label.at;
+      const w = (gd.label.text.length * 6 + 8) * u();
+      const t = el('text', { x: x + 8 * u() + w / 2, y: y - 8 * u(), 'font-size': 10 * u(), 'text-anchor': 'middle' });
+      t.textContent = gd.label.text;
+      g.append(el('rect', { x: x + 8 * u(), y: y - 19 * u(), width: w, height: 15 * u(), rx: 2 * u() }, 'guide-label'), t);
+      g.append(el('circle', { cx: x, cy: y, r: 2.5 * u() }, 'guide-dot'));
+    }
+  }
+  return g;
+}
+
 // ---- Rendering -----------------------------------------------------------
 
 let hoverId: string | null = null;
@@ -183,6 +222,7 @@ export function render() {
   const ab = activeArtboard();
   if (state.artboardSelected || state.tool === 'artboard') overlay.append(artboardBox(ab, state.tool === 'artboard' || state.tool === 'select'));
 
+  if (guides.length) overlay.append(guideOverlay());
   if (marquee) overlay.append(el('rect', { x: marquee.x, y: marquee.y, width: marquee.w, height: marquee.h, 'stroke-width': u() }, 'marquee'));
 }
 
@@ -361,7 +401,8 @@ function nodeOverlay(s: BezierShape, sid = s.id): SVGGElement {
   });
   s.nodes.forEach((n, i) => {
     const closeTarget = s === penPath && i === 0 && s.nodes.length > 1;
-    g.append(nodeTarget(n.p, sid, i, 'p', 'node-point' + (closeTarget ? ' close-target' : '')));
+    const picked = isAnchorSel(sid, i) ? ' picked' : '';
+    g.append(nodeTarget(n.p, sid, i, 'p', 'node-point' + (closeTarget ? ' close-target' : '') + picked));
   });
   return g;
 }
@@ -398,7 +439,8 @@ type Gesture =
   | { kind: 'resize'; handle: Handle; list: Shape[]; originals: Shape[]; box0: Box }
   | { kind: 'rotate'; pivot: Pt; a0: number; list: Shape[]; originals: Shape[] }
   | { kind: 'create'; start: Pt; shape: Shape }
-  | { kind: 'pen' }
+  | { kind: 'pen'; keepIn?: boolean }
+  | { kind: 'nodes'; lead: { sid: string; i: number }; items: { shape: BezierShape; i: number; orig: BNode }[]; leadOrig: Pt; sids: string[] }
   | { kind: 'node'; shape: BezierShape; original: BezierShape; node: number; part: NodePart }
   | { kind: 'convert'; shape: BezierShape; node: number; moved: boolean }
   | { kind: 'abMove'; ab: Artboard; start: Pt; x0: number; y0: number; artwork: Shape[]; originals: Shape[]; alt: boolean; copied: boolean }
@@ -436,6 +478,8 @@ svg.addEventListener('pointerdown', (e) => {
   const p = eventPoint(e);
   const target = e.target as Element;
   const tool = state.tool;
+  targetCache = null;
+  guides = [];
 
   if (e.button === 1 || spaceHeld || tool === 'hand') {
     gesture = { kind: 'pan', start: screenPt(e), x0: viewState.x, y0: viewState.y };
@@ -488,10 +532,12 @@ svg.addEventListener('pointerdown', (e) => {
     const sid = nodeEl.dataset.sid;
     const i = Number(nodeEl.dataset.node);
     const part = nodeEl.dataset.part as NodePart;
+    if (tool === 'direct' && part === 'p') return startAnchorDrag(sid, i, p, e.shiftKey);
     checkpoint();
     const s = ensureBezier(sid);
     if (tool === 'deleteAnchor' && part === 'p') {
-      if (s.nodes.length > 2) s.nodes.splice(i, 1);
+      // Like Illustrator: remove the point but keep the curve's shape.
+      if (s.nodes.length > 2) removeAnchorSmooth(s, i);
       return finish();
     }
     if (tool === 'convertAnchor' && part === 'p') {
@@ -502,7 +548,7 @@ svg.addEventListener('pointerdown', (e) => {
     return;
   }
 
-  if (tool === 'pen') return penDown(snapPt(p), e.shiftKey);
+  if (tool === 'pen') return penDown(p, e.shiftKey);
 
   const shapeEl = target.closest<SVGElement>('[data-id]');
   const hitId = shapeEl?.dataset.id ?? null;
@@ -548,12 +594,14 @@ svg.addEventListener('pointerdown', (e) => {
       } else if (!isSelected(hitId)) {
         state.selection = [hitId];
       }
+      if (!e.shiftKey) state.anchors = [];
       const list = selected().filter((s) => !s.locked);
       checkpoint();
       gesture = { kind: 'move', start: p, list, originals: structuredClone(list), box0: unionBox(list.map(worldBox)), alt: e.altKey, copied: false, dx: 0, dy: 0 };
       emit();
     } else {
       gesture = { kind: 'marquee', start: p, base: e.shiftKey ? [...state.selection] : [] };
+      if (!e.shiftKey) state.anchors = [];
       if (!e.shiftKey && state.selection.length) {
         state.selection = [];
         emit();
@@ -564,7 +612,7 @@ svg.addEventListener('pointerdown', (e) => {
 
   // Shape tools.
   checkpoint();
-  const sp = snapPt(p);
+  const sp = smartPoint(p);
   const style = { ...state.prefs.style };
   const id = newId();
   let shape: Shape;
@@ -610,7 +658,7 @@ svg.addEventListener('pointermove', (e) => {
     const showHover = state.tool === 'select' || pointTools.has(state.tool);
     const next = showHover ? id : null;
     if (penPath) {
-      penHover = snapPt(e.shiftKey ? constrain45(penPath.nodes[penPath.nodes.length - 1].p, p) : p);
+      penHover = e.shiftKey ? snapPt(constrain45(penPath.nodes[penPath.nodes.length - 1].p, p)) : smartPoint(p);
       render();
     } else if (next !== hoverId) {
       hoverId = next;
@@ -665,15 +713,26 @@ svg.addEventListener('pointermove', (e) => {
         .filter((s) => !s.hidden && !s.locked && intersects(worldBox(s), marquee!))
         .map((s) => s.id);
       state.selection = [...new Set([...g.base, ...hits])];
+      if (state.tool === 'direct') {
+        // Direct Selection marquee selects the anchor points inside it.
+        state.anchors = [];
+        for (const s of shapes()) {
+          if (s.hidden || s.locked) continue;
+          toBezier(s).nodes.forEach((n, i) => inside(marquee!, n.p) && state.anchors.push({ sid: s.id, i }));
+        }
+        state.selection = [...new Set([...g.base, ...state.anchors.map((a) => a.sid)])];
+      }
       break;
     }
     case 'move': {
       let dx = p[0] - g.start[0];
       let dy = p[1] - g.start[1];
       if (e.shiftKey) Math.abs(dx) > Math.abs(dy) ? (dy = 0) : (dx = 0);
-      // Snap the selection's corner to the grid rather than the raw delta.
-      dx = snap(g.box0.x + dx) - g.box0.x;
-      dy = snap(g.box0.y + dy) - g.box0.y;
+      // Smart guides first; otherwise snap the selection's corner to the grid.
+      const sg = smartOn() ? snapBox({ ...g.box0, x: g.box0.x + dx, y: g.box0.y + dy }, targets(g.list.map((x) => x.id)), viewState.zoom) : null;
+      guides = sg?.guides ?? [];
+      dx = sg?.dx != null ? dx + sg.dx : snap(g.box0.x + dx) - g.box0.x;
+      dy = sg?.dy != null ? dy + sg.dy : snap(g.box0.y + dy) - g.box0.y;
       if (g.alt && !g.copied && (dx || dy)) {
         // Alt-drag: leave the originals in place and move copies.
         g.list.forEach((s, i) => Object.assign(s, structuredClone(g.originals[i])));
@@ -702,13 +761,16 @@ svg.addEventListener('pointermove', (e) => {
       break;
     }
     case 'create':
-      drawShape(g, p, e.shiftKey, e.altKey);
+      drawShape(g, p, g.shape.type === 'path' ? p : smartPoint(p, [g.shape.id]), e.shiftKey, e.altKey);
       break;
     case 'pen':
-      penDrag(snapPt(p), e.altKey);
+      penDrag(smartPoint(p, [], undefined, false), e.altKey, g.keepIn);
       break;
     case 'node':
-      editNode(g, p, e.shiftKey);
+      editNode(g, p, e.shiftKey, e.altKey);
+      break;
+    case 'nodes':
+      moveAnchors(g, p, e.shiftKey);
       break;
     case 'convert': {
       // Convert Anchor drag: pull out fresh symmetric handles.
@@ -733,6 +795,8 @@ function endGesture(e: PointerEvent) {
   }
   const g = gesture;
   gesture = null;
+  guides = [];
+  targetCache = null;
   svg.classList.remove('panning-active');
   if (!g) return;
   switch (g.kind) {
@@ -762,7 +826,7 @@ function endGesture(e: PointerEvent) {
         dropCheckpoint();
         return finish(false);
       }
-      if (s.type === 'path') s.points = simplify(s.points, 0.15);
+      if (s.type === 'path') pencilToCurve(s);
       break;
     }
     case 'convert': {
@@ -873,14 +937,14 @@ function toggleSmooth(s: BezierShape, i: number) {
 // ---- Shape tools -----------------------------------------------------------
 
 // Shift: square / circle / 45° line. Alt: draw from the center (Illustrator).
-function drawShape(g: Extract<Gesture, { kind: 'create' }>, raw: Pt, shift: boolean, alt: boolean) {
+function drawShape(g: Extract<Gesture, { kind: 'create' }>, raw: Pt, snapped: Pt, shift: boolean, alt: boolean) {
   const s = g.shape;
   const [x0, y0] = g.start;
   if (s.type === 'path') {
     s.points.push(raw);
     return;
   }
-  let [x, y] = snapPt(raw);
+  let [x, y] = snapped;
   if (s.type === 'line') {
     if (shift) [x, y] = snapPt(constrain45(g.start, [x, y]));
     if (alt) Object.assign(s, { x1: 2 * x0 - x, y1: 2 * y0 - y });
@@ -915,7 +979,7 @@ function resize(g: Extract<Gesture, { kind: 'resize' }>, p: Pt, keepRatio: boole
   const b = g.box0;
   const c = center(b);
   let [px, py] = rotate(p, -rot, c);
-  if (!rot) [px, py] = snapPt([px, py]);
+  if (!rot) [px, py] = smartPoint([px, py], g.list.map((s) => s.id));
   const h = g.handle;
   const affX = h.includes('w') || h.includes('e');
   const affY = h.includes('n') || h.includes('s');
@@ -963,39 +1027,6 @@ function resizeArtboard(g: Extract<Gesture, { kind: 'abResize' }>, p: Pt, keepRa
 
 const near = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 10 * u();
 
-function penDown(p: Pt, shift: boolean) {
-  if (penPath) {
-    const nodes = penPath.nodes;
-    const last = nodes[nodes.length - 1];
-    // Click the first point to close; click the last point again to finish open.
-    if (nodes.length > 1 && near(p, nodes[0].p)) return finishPen(true);
-    if (near(p, last.p)) return finishPen(false);
-    nodes.push({ p: shift ? snapPt(constrain45(last.p, p)) : p });
-  } else {
-    checkpoint();
-    penPath = { id: newId(), type: 'bezier', nodes: [{ p }], closed: false, ...state.prefs.style };
-    penPath.name = nextName('bezier');
-    shapes().push(penPath);
-    state.selection = [penPath.id];
-  }
-  gesture = { kind: 'pen' };
-  emit('live');
-}
-
-// Dragging while placing a point pulls out symmetric handles; Alt breaks them.
-function penDrag(p: Pt, alt: boolean) {
-  const n = penPath!.nodes[penPath!.nodes.length - 1];
-  if (near(p, n.p)) {
-    delete n.in;
-    delete n.out;
-    n.smooth = false;
-    return;
-  }
-  n.out = p;
-  if (!alt || !n.in) n.in = [2 * n.p[0] - p[0], 2 * n.p[1] - p[1]];
-  n.smooth = !alt;
-}
-
 export function finishPen(closed = false) {
   const s = penPath;
   if (!s) return;
@@ -1027,26 +1058,218 @@ export function penBackspace(): boolean {
 
 export const isDrawingPath = () => !!penPath;
 
-function editNode(g: Extract<Gesture, { kind: 'node' }>, p: Pt, shift: boolean) {
+// Open-path endpoints under the pointer, for continuing or joining paths.
+function openEndpointAt(p: Pt, skipId?: string): { sid: string; end: 'start' | 'end' } | null {
+  for (const s of [...shapes()].reverse()) {
+    if (s.hidden || s.locked || s.id === skipId) continue;
+    const b = toBezier(s);
+    if (b.closed || b.nodes.length < 2) continue;
+    if (near(p, b.nodes[0].p)) return { sid: s.id, end: 'start' };
+    if (near(p, b.nodes[b.nodes.length - 1].p)) return { sid: s.id, end: 'end' };
+  }
+  return null;
+}
+
+function penDown(raw: Pt, shift: boolean) {
+  if (penPath) {
+    const nodes = penPath.nodes;
+    const last = nodes[nodes.length - 1];
+    const p = shift ? snapPt(constrain45(last.p, raw)) : smartPoint(raw);
+    // Click the first point to close; click the last point again to finish open.
+    if (nodes.length > 1 && near(p, nodes[0].p)) return finishPen(true);
+    if (near(p, last.p)) return finishPen(false);
+    // Click another open path's endpoint to join onto it.
+    const hit = openEndpointAt(p, penPath.id);
+    if (hit) {
+      const other = ensureBezier(hit.sid);
+      nodes.push(...(hit.end === 'start' ? other.nodes : reverseNodes(other.nodes)));
+      state.doc.shapes = shapes().filter((s) => s !== other);
+      return finishPen(false);
+    }
+    nodes.push({ p });
+    gesture = { kind: 'pen' };
+  } else {
+    checkpoint();
+    const p = smartPoint(raw);
+    const hit = openEndpointAt(p);
+    if (hit) {
+      // Click an open path's endpoint to keep drawing from it (Illustrator).
+      const s = ensureBezier(hit.sid);
+      if (hit.end === 'start') s.nodes = reverseNodes(s.nodes);
+      penPath = s;
+      gesture = { kind: 'pen', keepIn: true };
+    } else {
+      penPath = { id: newId(), type: 'bezier', nodes: [{ p }], closed: false, ...state.prefs.style };
+      penPath.name = nextName('bezier');
+      shapes().push(penPath);
+      gesture = { kind: 'pen' };
+    }
+    state.selection = [penPath.id];
+  }
+  emit('live');
+}
+
+// Dragging while placing a point pulls out symmetric handles; Alt breaks them.
+// When continuing an existing path, its incoming handle is kept.
+function penDrag(p: Pt, alt: boolean, keepIn = false) {
+  const n = penPath!.nodes[penPath!.nodes.length - 1];
+  if (near(p, n.p)) {
+    if (!keepIn) delete n.in;
+    delete n.out;
+    n.smooth = false;
+    return;
+  }
+  n.out = p;
+  if (keepIn && n.in) {
+    n.smooth = false;
+    return;
+  }
+  if (!alt || !n.in) n.in = [2 * n.p[0] - p[0], 2 * n.p[1] - p[1]];
+  n.smooth = !alt;
+}
+
+// ---- Direct Selection: anchor points ----------------------------------------
+
+const isAnchorSel = (sid: string, i: number) => state.anchors.some((a) => a.sid === sid && a.i === i);
+
+// Click selects one point (Shift toggles); dragging moves every selected point.
+function startAnchorDrag(sid: string, i: number, p: Pt, shift: boolean) {
+  if (shift) {
+    state.anchors = isAnchorSel(sid, i) ? state.anchors.filter((a) => !(a.sid === sid && a.i === i)) : [...state.anchors, { sid, i }];
+    if (!isAnchorSel(sid, i)) return emit();
+  } else if (!isAnchorSel(sid, i)) {
+    state.anchors = [{ sid, i }];
+  }
+  checkpoint();
+  const sids = [...new Set(state.anchors.map((a) => a.sid))];
+  const bez = new Map(sids.map((id) => [id, ensureBezier(id)]));
+  const items = state.anchors.map((a) => ({ shape: bez.get(a.sid)!, i: a.i, orig: structuredClone(bez.get(a.sid)!.nodes[a.i]) }));
+  state.selection = [...new Set([...state.selection, ...sids])];
+  gesture = { kind: 'nodes', lead: { sid, i }, items, leadOrig: [...bez.get(sid)!.nodes[i].p] as Pt, sids };
+  emit();
+}
+
+function moveAnchors(g: Extract<Gesture, { kind: 'nodes' }>, p: Pt, shift: boolean) {
+  const q = shift ? snapPt(constrain45(g.leadOrig, p)) : smartPoint(p, g.sids, g.lead);
+  const [dx, dy] = [q[0] - g.leadOrig[0], q[1] - g.leadOrig[1]];
+  const off = (v?: Pt): Pt | undefined => v && [v[0] + dx, v[1] + dy];
+  for (const it of g.items) Object.assign(it.shape.nodes[it.i], { p: off(it.orig.p), in: off(it.orig.in), out: off(it.orig.out) });
+}
+
+export function nudgeAnchors(dx: number, dy: number): boolean {
+  if (state.tool !== 'direct' || !state.anchors.length) return false;
+  checkpoint();
+  for (const a of state.anchors) {
+    const n = ensureBezier(a.sid).nodes[a.i];
+    const off = (v?: Pt): Pt | undefined => v && [v[0] + dx, v[1] + dy];
+    Object.assign(n, { p: off(n.p), in: off(n.in), out: off(n.out) });
+  }
+  commit();
+  return true;
+}
+
+// Delete selected points, keeping each curve's shape; a path left with fewer
+// than two points is removed.
+export function deleteAnchors(): boolean {
+  if (state.tool !== 'direct' || !state.anchors.length) return false;
+  checkpoint();
+  const bySid = new Map<string, number[]>();
+  for (const a of state.anchors) bySid.set(a.sid, [...(bySid.get(a.sid) ?? []), a.i]);
+  for (const [sid, idx] of bySid) {
+    const s = ensureBezier(sid);
+    if (s.nodes.length - idx.length < 2) {
+      state.doc.shapes = shapes().filter((x) => x !== s);
+      continue;
+    }
+    for (const i of idx.sort((a, b) => b - a)) removeAnchorSmooth(s, i);
+  }
+  state.anchors = [];
+  commit();
+  return true;
+}
+
+// Object > Path > Join (Ctrl+J): one open path closes; two open paths join
+// at their nearest endpoints.
+export function joinPaths(): string | null {
+  const sel = selected().filter((s) => !s.locked);
+  const open = sel.filter((s) => {
+    const b = toBezier(s);
+    return !b.closed && b.nodes.length > 1;
+  });
+  if (open.length === 1 && sel.length === 1) {
+    checkpoint();
+    const s = ensureBezier(open[0].id);
+    const [first, last] = [s.nodes[0], s.nodes[s.nodes.length - 1]];
+    if (s.nodes.length > 2 && Math.hypot(first.p[0] - last.p[0], first.p[1] - last.p[1]) < 0.01) {
+      first.in = last.in; // ends overlap: merge them
+      s.nodes.pop();
+    }
+    s.closed = true;
+    commit();
+    return null;
+  }
+  if (open.length !== 2) return 'Select one or two open paths to join';
+  checkpoint();
+  const a = ensureBezier(open[0].id);
+  const b = ensureBezier(open[1].id);
+  // Pick the closest pair of endpoints, then orient a→b.
+  const ends = (s: BezierShape) => [s.nodes[0].p, s.nodes[s.nodes.length - 1].p];
+  const [a0, a1] = ends(a);
+  const [b0, b1] = ends(b);
+  const d = (u: Pt, v: Pt) => Math.hypot(u[0] - v[0], u[1] - v[1]);
+  const options: [number, boolean, boolean][] = [
+    [d(a1, b0), false, false],
+    [d(a1, b1), false, true],
+    [d(a0, b0), true, false],
+    [d(a0, b1), true, true],
+  ];
+  const [dist, revA, revB] = options.sort((x, y) => x[0] - y[0])[0];
+  if (revA) a.nodes = reverseNodes(a.nodes);
+  const bn = revB ? reverseNodes(b.nodes) : b.nodes;
+  if (dist < 0.01) {
+    a.nodes[a.nodes.length - 1].out = bn[0].out;
+    a.nodes.push(...bn.slice(1));
+  } else a.nodes.push(...bn);
+  state.doc.shapes = shapes().filter((s) => s !== b);
+  state.selection = [a.id];
+  commit();
+  return null;
+}
+
+// Pencil strokes become smooth, editable curves.
+function pencilToCurve(s: Extract<Shape, { type: 'path' }>) {
+  const nodes = cubicsToNodes(fitCurve(s.points, 0.3));
+  if (nodes.length < 2) return;
+  const list = shapes();
+  const { points: _pts, ...rest } = s;
+  list[list.indexOf(s)] = { ...rest, type: 'bezier', nodes, closed: false };
+}
+
+function editNode(g: Extract<Gesture, { kind: 'node' }>, p: Pt, shift: boolean, alt: boolean) {
   const n: BNode = g.shape.nodes[g.node];
   const on = g.original.nodes[g.node];
   if (g.part === 'p') {
     // Move the point and carry its handles along.
-    let q = snapPt(p);
-    if (shift) q = snapPt(constrain45(on.p, p));
+    const q = shift ? snapPt(constrain45(on.p, p)) : smartPoint(p, [g.shape.id], { sid: g.shape.id, i: g.node });
     const [dx, dy] = [q[0] - on.p[0], q[1] - on.p[1]];
     n.p = q;
     n.in = on.in && [on.in[0] + dx, on.in[1] + dy];
     n.out = on.out && [on.out[0] + dx, on.out[1] + dy];
     return;
   }
-  n[g.part] = p;
+  // Handles: Shift constrains to 45°, smart guides snap them to points.
+  const h = shift ? constrain45(n.p, p) : smartPoint(p, [g.shape.id], { sid: g.shape.id, i: g.node }, false);
+  n[g.part] = h;
+  if (alt) {
+    n.smooth = false; // Alt-drag breaks the handles apart (Illustrator)
+    return;
+  }
   const other: NodePart = g.part === 'in' ? 'out' : 'in';
   const o2 = on[other];
   if (n.smooth && o2) {
     // Keep the opposite handle pointing the other way, at its own length.
     const len = Math.hypot(o2[0] - on.p[0], o2[1] - on.p[1]);
-    const [vx, vy] = [p[0] - n.p[0], p[1] - n.p[1]];
+    const [vx, vy] = [h[0] - n.p[0], h[1] - n.p[1]];
     const d = Math.hypot(vx, vy) || 1;
     n[other] = [n.p[0] - (vx / d) * len, n.p[1] - (vy / d) * len];
   }

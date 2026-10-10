@@ -47,6 +47,7 @@ const tip = (t: Tool) => `${TOOLS[t].label} (${keyFor(TOOLS[t].key)})`;
 export function setTool(t: Tool) {
   if (state.tool === 'pen' && t !== 'pen') finishPen(false);
   state.tool = t;
+  if (t !== 'direct') state.anchors = [];
   const gi = GROUPS.findIndex((g) => g.includes(t));
   if (gi >= 0) groupShown[gi] = t;
   setCursor();
@@ -177,7 +178,7 @@ function openFlyout(anchor: HTMLElement, gi: number) {
   showPop(anchor.parentElement!, menuList(items));
 }
 
-function togglePref(key: 'grid' | 'snap' | 'keylines') {
+function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides') {
   state.prefs[key] = !state.prefs[key];
   savePrefs();
   commit();
@@ -203,6 +204,7 @@ function openMenu(anchor: HTMLElement, which: string) {
         { sep: true },
         { label: 'Pixel grid', keys: "Ctrl+'", checked: state.prefs.grid, run: () => togglePref('grid') },
         { label: 'Material keylines', keys: 'Ctrl+;', checked: state.prefs.keylines, run: () => togglePref('keylines') },
+        { label: 'Smart guides', keys: 'Ctrl+U', checked: state.prefs.smartGuides, run: () => togglePref('smartGuides') },
         { label: 'Snap to grid', keys: "Ctrl+Shift+'", checked: state.prefs.snap, run: () => togglePref('snap') },
         { label: 'Hide panels', keys: 'Tab', run: togglePanels },
         { sep: true },
@@ -569,6 +571,7 @@ function gridSection() {
   };
   return section(
     'Grid',
+    toggleRow('Smart guides', 'Ctrl+U', p.smartGuides, () => togglePref('smartGuides')),
     toggleRow('Show grid', "Ctrl+'", p.grid, () => togglePref('grid')),
     labeled('Every', segmented([1, 2, 4, 8].map((n) => [n, n === 1 ? '1 px' : String(n), n === 1 ? 'Pixel grid only' : `Stronger line every ${n} px`] as [number, string, string]), p.gridSize, (n) => setPref('gridSize', n))),
     toggleRow('Snap', "Ctrl+Shift+'", p.snap, () => togglePref('snap')),

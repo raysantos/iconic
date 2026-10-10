@@ -1167,3 +1167,26 @@ body.scrubbing * {
 .d-row .segmented {
   max-width: 170px;
 }
+
+/* ---- Smart guides (Illustrator magenta) & picked anchors ------------------ */
+
+#canvas .smart-guides {
+  pointer-events: none;
+}
+#canvas .smart-guide {
+  stroke: #ff00e6;
+}
+#canvas .guide-label {
+  fill: #ff00e6;
+}
+#canvas .smart-guides text {
+  fill: #fff;
+  font-family: Inter, system-ui, sans-serif;
+  font-weight: 500;
+}
+#canvas .guide-dot {
+  fill: #ff00e6;
+}
+#canvas .node-point.picked rect {
+  fill: var(--accent);
+}

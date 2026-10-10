@@ -1,7 +1,7 @@
 {
   "name": "Iconic",
   "short_name": "Iconic",
-  "description": "Vector icon editor for PC and phone with a Figma-style UI and Illustrator shortcuts",
+  "description": "Material icon editor for PC and phone with a Figma-style UI and Illustrator shortcuts",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#e5e5e5",
