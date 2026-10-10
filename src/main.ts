@@ -17,7 +17,7 @@ type Shape =
   | ({ id: string; type: 'path'; points: [number, number][] } & Style);
 
 const SIZE = 24; // icon grid size (viewBox 0 0 24 24)
-const STORAGE_KEY = 'icon-forge:doc';
+const STORAGE_KEY = 'iconic:doc';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 let shapes: Shape[] = load();

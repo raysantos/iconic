@@ -1,5 +1,5 @@
 // Minimal offline cache: network-first, falling back to cache.
-const CACHE = 'icon-forge-v1';
+const CACHE = 'iconic-v1';
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.webmanifest', '/icon.svg'])));
   self.skipWaiting();

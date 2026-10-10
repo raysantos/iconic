@@ -1,4 +1,4 @@
-# Icon Forge
+# Iconic
 
 A lightweight vector icon editor that runs on PC and phone. It's a Progressive Web App (PWA): open it in a browser, then "Install" (desktop Chrome/Edge) or "Add to Home Screen" (iOS Safari / Android Chrome) to use it like a native app, including offline.
 
