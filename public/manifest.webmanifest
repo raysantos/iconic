@@ -1,10 +1,10 @@
 {
   "name": "Iconic",
   "short_name": "Iconic",
-  "description": "Vector icon editor for PC and phone",
+  "description": "Vector icon editor for PC and phone with a Figma-style UI and Illustrator shortcuts",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#1e1e24",
-  "theme_color": "#1e1e24",
+  "background_color": "#e5e5e5",
+  "theme_color": "#2c2c2c",
   "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }

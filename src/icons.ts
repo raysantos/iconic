@@ -1,0 +1,39 @@
+// 24×24 line icons, drawn with currentColor.
+const P: Record<string, string> = {
+  select: '<path d="M6 3.5 18 13l-5.6.9 3.1 6.1-2.2 1.1-3.1-6.1L6 19z" fill="currentColor" stroke="none"/>',
+  direct: '<path d="M6 3.5 18 13l-5.6.9 3.1 6.1-2.2 1.1-3.1-6.1L6 19z"/>',
+  pen: '<path d="M12 3 7 12l2 7h6l2-7z"/><path d="M12 3v7"/><circle cx="12" cy="12" r="1.3"/><path d="M8.5 21h7"/>',
+  addAnchor: '<path d="M10 4 6 11.5 7.6 17h4.8l1.6-5.5z"/><path d="M10 4v6"/><path d="M18 14v6M15 17h6"/>',
+  deleteAnchor: '<path d="M10 4 6 11.5 7.6 17h4.8l1.6-5.5z"/><path d="M10 4v6"/><path d="M15 17h6"/>',
+  convertAnchor: '<path d="M4 19 12 6l8 13"/><rect x="10.3" y="4.3" width="3.4" height="3.4" fill="currentColor"/>',
+  rect: '<rect x="4.5" y="5.5" width="15" height="13" rx="1"/>',
+  ellipse: '<circle cx="12" cy="12" r="7.5"/>',
+  line: '<path d="M5 19 19 5"/>',
+  pencil: '<path d="m4.5 19.5 1-4L16 5l3 3L8.5 18.5z"/><path d="m14 7 3 3"/>',
+  hand: '<path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11m0-5.5V5a1.5 1.5 0 0 1 3 0v6m0-4.5a1.5 1.5 0 0 1 3 0V13c0 4-2.5 7-6.5 7-2.6 0-4.1-1.3-5.4-3.4L4.4 13a1.4 1.4 0 0 1 2.3-1.6L8 13"/>',
+  zoom: '<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/>',
+  path: '<path d="M4 18c3-9 6-12 8-6s5 3 8-6"/><rect x="2.8" y="16.8" width="2.4" height="2.4" fill="currentColor"/><rect x="18.8" y="4.8" width="2.4" height="2.4" fill="currentColor"/>',
+  eye: '<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.5"/>',
+  eyeOff: '<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" opacity=".35"/><path d="m4 4 16 16"/>',
+  lock: '<rect x="6" y="11" width="12" height="9" rx="1.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/>',
+  unlock: '<rect x="6" y="11" width="12" height="9" rx="1.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 6.8-1.2"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  chevron: '<path d="m8 10 4 4 4-4"/>',
+  layers: '<path d="m12 4 8.5 4.5L12 13 3.5 8.5z"/><path d="m3.5 12.5 8.5 4.5 8.5-4.5"/>',
+  design: '<circle cx="8" cy="8" r="3"/><rect x="13" y="13" width="7" height="7" rx="1"/><path d="M15 5h5M4 17h5"/>',
+  alignLeft: '<path d="M4 4v16"/><rect x="7" y="7" width="11" height="3.5" rx=".5"/><rect x="7" y="13.5" width="7" height="3.5" rx=".5"/>',
+  alignHCenter: '<path d="M12 4v16"/><rect x="5.5" y="7" width="13" height="3.5" rx=".5"/><rect x="8" y="13.5" width="8" height="3.5" rx=".5"/>',
+  alignRight: '<path d="M20 4v16"/><rect x="6" y="7" width="11" height="3.5" rx=".5"/><rect x="10" y="13.5" width="7" height="3.5" rx=".5"/>',
+  alignTop: '<path d="M4 4h16"/><rect x="7" y="7" width="3.5" height="11" rx=".5"/><rect x="13.5" y="7" width="3.5" height="7" rx=".5"/>',
+  alignVCenter: '<path d="M4 12h16"/><rect x="7" y="5.5" width="3.5" height="13" rx=".5"/><rect x="13.5" y="8" width="3.5" height="8" rx=".5"/>',
+  alignBottom: '<path d="M4 20h16"/><rect x="7" y="6" width="3.5" height="11" rx=".5"/><rect x="13.5" y="10" width="3.5" height="7" rx=".5"/>',
+  rotate: '<path d="M19 12a7 7 0 1 1-2-4.9"/><path d="M17.5 3.5V7.5H13.5"/>',
+  logo: '<rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" stroke="none"/><path d="M8 16.5 12 7l4 9.5" stroke="#fff" stroke-width="2"/><circle cx="12" cy="14" r="1.6" fill="#fff" stroke="none"/>',
+  keyboard: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
+};
+
+export function icon(name: keyof typeof P | string, size = 16) {
+  return `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] ?? ''}</svg>`;
+}

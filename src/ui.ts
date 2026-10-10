@@ -1,0 +1,795 @@
+// Figma-style chrome: top bar, Layers panel, Design panel, menus, dialogs.
+import * as A from './actions';
+import { finishPen, fitArtboard, fitSelection, onViewChange, setCursor, setHover, viewState, zoomAt, actualSize } from './canvas';
+import { exportPng, exportSvg, PNG_SIZES } from './export';
+import { icon } from './icons';
+import { SIZES, TYPE_LABEL, type Shape, type Tool } from './model';
+import { installShortcuts, keyFor, pretty, SHORTCUTS } from './shortcuts';
+import { byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, shapes, state, subscribe, undo } from './store';
+
+const q = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
+
+function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string; html?: string } = {}, ...kids: (Node | string)[]) {
+  const e = document.createElement(tag);
+  const { class: cls, html, ...rest } = props;
+  if (cls) e.className = cls;
+  if (html) e.innerHTML = html;
+  Object.assign(e, rest);
+  e.append(...kids);
+  return e;
+}
+
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+// ---- Tools -------------------------------------------------------------
+
+const TOOLS: Record<Tool, { label: string; key: string; icon: string }> = {
+  select: { label: 'Selection', key: 'Selection', icon: 'select' },
+  direct: { label: 'Direct Selection', key: 'Direct Selection', icon: 'direct' },
+  rect: { label: 'Rectangle', key: 'Rectangle', icon: 'rect' },
+  ellipse: { label: 'Ellipse', key: 'Ellipse', icon: 'ellipse' },
+  line: { label: 'Line Segment', key: 'Line Segment', icon: 'line' },
+  pen: { label: 'Pen', key: 'Pen', icon: 'pen' },
+  addAnchor: { label: 'Add Anchor Point', key: 'Add Anchor Point', icon: 'addAnchor' },
+  deleteAnchor: { label: 'Delete Anchor Point', key: 'Delete Anchor Point', icon: 'deleteAnchor' },
+  convertAnchor: { label: 'Anchor Point', key: 'Anchor Point (convert)', icon: 'convertAnchor' },
+  pencil: { label: 'Pencil', key: 'Pencil', icon: 'pencil' },
+  hand: { label: 'Hand', key: 'Hand', icon: 'hand' },
+  zoom: { label: 'Zoom', key: 'Zoom (Alt-click to zoom out)', icon: 'zoom' },
+};
+
+const GROUPS: Tool[][] = [['select', 'direct'], ['rect', 'ellipse', 'line'], ['pen', 'addAnchor', 'deleteAnchor', 'convertAnchor'], ['pencil'], ['hand', 'zoom']];
+const groupShown = GROUPS.map((g) => g[0]);
+
+const tip = (t: Tool) => `${TOOLS[t].label} (${keyFor(TOOLS[t].key)})`;
+
+export function setTool(t: Tool) {
+  if (state.tool === 'pen' && t !== 'pen') finishPen(false);
+  state.tool = t;
+  const gi = GROUPS.findIndex((g) => g.includes(t));
+  if (gi >= 0) groupShown[gi] = t;
+  setCursor();
+  renderTools();
+  emit();
+}
+
+const topbar = q('#topbar');
+
+function buildTopbar() {
+  topbar.innerHTML = `
+    <div class="tb-left">
+      <button class="tb-btn menu-btn" data-menu="main" title="Main menu">${icon('logo', 22)}${icon('chevron', 12)}</button>
+      <div class="tools" role="toolbar" aria-label="Tools"></div>
+    </div>
+    <div class="tb-center">
+      <input class="doc-name" aria-label="Icon name" spellcheck="false" />
+      <span class="doc-meta"></span>
+    </div>
+    <div class="tb-right">
+      <button class="tb-btn sheet-btn" data-sheet="left" title="Layers">${icon('layers', 18)}</button>
+      <button class="tb-btn sheet-btn" data-sheet="right" title="Design">${icon('design', 18)}</button>
+      <button class="zoom-btn" data-menu="zoom" title="Zoom"><span class="zoom-val"></span>${icon('chevron', 12)}</button>
+      <button class="export-btn" data-menu="export" title="Export (${pretty('Ctrl+Shift+E')})">Export</button>
+    </div>`;
+
+  const name = q<HTMLInputElement>('.doc-name', topbar);
+  name.addEventListener('change', () => A.renameDoc(name.value));
+  name.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      if (e.key === 'Escape') name.value = state.doc.name;
+      name.blur();
+    }
+  });
+
+  topbar.addEventListener('click', (e) => {
+    const t = e.target as Element;
+    const toolBtn = t.closest<HTMLElement>('[data-tool]');
+    if (toolBtn) return setTool(toolBtn.dataset.tool as Tool);
+    const flyout = t.closest<HTMLElement>('[data-flyout]');
+    if (flyout) return openFlyout(flyout, Number(flyout.dataset.flyout));
+    const menu = t.closest<HTMLElement>('[data-menu]');
+    if (menu) return openMenu(menu, menu.dataset.menu!);
+    const sheet = t.closest<HTMLElement>('[data-sheet]');
+    if (sheet) toggleSheet(sheet.dataset.sheet as 'left' | 'right');
+  });
+  renderTools();
+}
+
+function renderTools() {
+  const tools = q('.tools', topbar);
+  tools.innerHTML = GROUPS.map((g, i) => {
+    const shown = groupShown[i];
+    const active = g.includes(state.tool);
+    return `<div class="tool-group${active ? ' active' : ''}">
+      <button class="tb-btn tool" data-tool="${shown}" title="${tip(shown)}" aria-pressed="${active}">${icon(TOOLS[shown].icon, 18)}</button>
+      ${g.length > 1 ? `<button class="caret" data-flyout="${i}" title="More tools">${icon('chevron', 10)}</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function updateTopbar() {
+  const name = q<HTMLInputElement>('.doc-name', topbar);
+  if (document.activeElement !== name) name.value = state.doc.name;
+  q('.doc-meta', topbar).textContent = `${state.doc.size} × ${state.doc.size}`;
+}
+
+const updateZoomLabel = () => (q('.zoom-val', topbar).textContent = `${Math.round(viewState.zoom * 100)}%`);
+
+// ---- Menus & popovers ------------------------------------------------------
+
+interface MenuItem {
+  label?: string;
+  keys?: string;
+  icon?: string;
+  checked?: boolean;
+  run?: () => void;
+  sep?: boolean;
+}
+
+let openPop: HTMLElement | null = null;
+
+function closePop() {
+  openPop?.remove();
+  openPop = null;
+}
+
+function showPop(anchor: HTMLElement, content: HTMLElement, align: 'left' | 'right' = 'left') {
+  closePop();
+  const pop = h('div', { class: 'popover' }, content);
+  document.body.append(pop);
+  const r = anchor.getBoundingClientRect();
+  const pw = pop.offsetWidth;
+  let left = align === 'left' ? r.left : r.right - pw;
+  left = Math.max(8, Math.min(left, innerWidth - pw - 8));
+  pop.style.left = `${left}px`;
+  pop.style.top = `${r.bottom + 6}px`;
+  openPop = pop;
+}
+
+function menuList(items: MenuItem[]) {
+  const ul = h('ul', { class: 'menu', role: 'menu' } as Partial<HTMLUListElement>);
+  for (const it of items) {
+    if (it.sep) {
+      ul.append(h('li', { class: 'sep', role: 'separator' } as Partial<HTMLLIElement>));
+      continue;
+    }
+    const li = h('li', {
+      class: 'menu-item',
+      role: 'menuitem',
+      tabIndex: 0,
+      html: `<span class="mi-check">${it.checked ? '✓' : ''}</span>${it.icon ? icon(it.icon, 16) : ''}<span class="mi-label">${escapeHtml(it.label!)}</span><span class="mi-keys">${it.keys ? pretty(it.keys) : ''}</span>`,
+    } as Partial<HTMLLIElement>);
+    const run = () => {
+      closePop();
+      it.run?.();
+    };
+    li.addEventListener('click', run);
+    li.addEventListener('keydown', (e) => e.key === 'Enter' && run());
+    ul.append(li);
+  }
+  return ul;
+}
+
+function openFlyout(anchor: HTMLElement, gi: number) {
+  const items = GROUPS[gi].map((t) => ({ label: TOOLS[t].label, keys: keyFor(TOOLS[t].key), icon: TOOLS[t].icon, checked: state.tool === t, run: () => setTool(t) }));
+  showPop(anchor.parentElement!, menuList(items));
+}
+
+function togglePref(key: 'grid' | 'snap') {
+  state.prefs[key] = !state.prefs[key];
+  savePrefs();
+  commit();
+}
+
+function openMenu(anchor: HTMLElement, which: string) {
+  if (openPop && openPop.dataset.for === which) return closePop();
+  if (which === 'main') {
+    showPop(
+      anchor,
+      menuList([
+        { label: 'New icon', keys: 'Ctrl+Alt+N', run: A.newDoc },
+        { sep: true },
+        { label: 'Undo', keys: 'Ctrl+Z', run: undo },
+        { label: 'Redo', keys: 'Ctrl+Shift+Z', run: redo },
+        { sep: true },
+        { label: 'Select all', keys: 'Ctrl+A', run: A.selectAll },
+        { label: 'Unlock all', keys: 'Ctrl+Alt+2', run: A.unlockAll },
+        { label: 'Show all', keys: 'Ctrl+Alt+3', run: A.showAll },
+        { sep: true },
+        { label: 'Pixel grid', keys: "Ctrl+'", checked: state.prefs.grid, run: () => togglePref('grid') },
+        { label: 'Snap to grid', keys: "Ctrl+Shift+'", checked: state.prefs.snap, run: () => togglePref('snap') },
+        { label: 'Hide panels', keys: 'Tab', run: togglePanels },
+        { sep: true },
+        { label: 'Export…', keys: 'Ctrl+Shift+E', run: openExport },
+        { label: 'Keyboard shortcuts', keys: 'Ctrl+/', run: openHelp },
+      ]),
+    );
+  } else if (which === 'zoom') {
+    showPop(
+      anchor,
+      menuList([
+        { label: 'Zoom in', keys: 'Ctrl+=', run: () => zoomAt(2) },
+        { label: 'Zoom out', keys: 'Ctrl+-', run: () => zoomAt(0.5) },
+        { label: 'Zoom to fit', keys: 'Ctrl+0', run: fitArtboard },
+        { label: 'Zoom to selection', keys: 'Shift+2', run: fitSelection },
+        { label: 'Actual size (100%)', keys: 'Ctrl+1', run: actualSize },
+        { sep: true },
+        ...[800, 1600, 3200].map((p) => ({ label: `${p}%`, run: () => zoomAt(p / 100 / viewState.zoom) })),
+      ]),
+      'right',
+    );
+  } else if (which === 'export') {
+    showPop(anchor, h('div', { class: 'export-pop' }, exportControls()), 'right');
+  }
+  if (openPop) openPop.dataset.for = which;
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (openPop && !openPop.contains(e.target as Node) && !(e.target as Element).closest('[data-menu],[data-flyout]')) closePop();
+});
+document.addEventListener('keydown', (e) => e.key === 'Escape' && closePop());
+
+function openExport() {
+  openMenu(q('.export-btn', topbar), 'export');
+}
+
+// ---- Layers panel ----------------------------------------------------------
+
+const left = q('#leftPanel');
+left.innerHTML = `
+  <div class="panel-header"><span class="panel-title">Layers</span><button class="sheet-close" data-close="left" aria-label="Close">×</button></div>
+  <ul class="layer-list" role="tree" aria-label="Layers"></ul>`;
+const layerList = q<HTMLUListElement>('.layer-list', left);
+let renamingId: string | null = null;
+
+const TYPE_ICON: Record<Shape['type'], string> = { rect: 'rect', ellipse: 'ellipse', line: 'line', path: 'pencil', bezier: 'path' };
+
+function renderLayers() {
+  if (renamingId) return; // don't steal focus from the rename field
+  if (!shapes().length) {
+    layerList.innerHTML = `<li class="layers-empty">Pick a tool and draw on the artboard.<br>Press <kbd>${pretty('Ctrl+/')}</kbd> for shortcuts.</li>`;
+    return;
+  }
+  layerList.innerHTML = [...shapes()]
+    .reverse() // topmost first
+    .map((s) => {
+      const cls = ['layer-row', state.selection.includes(s.id) && 'selected', s.hidden && 'is-hidden', s.locked && 'is-locked'].filter(Boolean).join(' ');
+      return `<li class="${cls}" data-id="${s.id}" role="treeitem" aria-selected="${state.selection.includes(s.id)}">
+        <span class="layer-icon">${icon(TYPE_ICON[s.type], 14)}</span>
+        <span class="layer-name">${escapeHtml(s.name ?? TYPE_LABEL[s.type])}</span>
+        <button class="row-btn${s.locked ? ' on' : ''}" data-act="lock" title="${s.locked ? 'Unlock' : 'Lock'} (${pretty('Ctrl+2')})">${icon(s.locked ? 'lock' : 'unlock', 14)}</button>
+        <button class="row-btn${s.hidden ? ' on' : ''}" data-act="eye" title="${s.hidden ? 'Show' : 'Hide'} (${pretty('Ctrl+3')})">${icon(s.hidden ? 'eyeOff' : 'eye', 14)}</button>
+      </li>`;
+    })
+    .join('');
+}
+
+layerList.addEventListener('click', (e) => {
+  if (dragJustEnded) return;
+  const row = (e.target as Element).closest<HTMLElement>('.layer-row');
+  if (!row) return;
+  const id = row.dataset.id!;
+  const s = byId(id)!;
+  const act = (e.target as Element).closest<HTMLElement>('[data-act]')?.dataset.act;
+  if (act) {
+    checkpoint();
+    if (act === 'lock') s.locked = !s.locked;
+    else s.hidden = !s.hidden;
+    if (s.locked || s.hidden) state.selection = state.selection.filter((x) => x !== id);
+    return commit();
+  }
+  if (e.shiftKey || e.ctrlKey || e.metaKey) {
+    state.selection = state.selection.includes(id) ? state.selection.filter((x) => x !== id) : [...state.selection, id];
+  } else {
+    state.selection = [id];
+  }
+  emit();
+});
+
+layerList.addEventListener('dblclick', (e) => {
+  const row = (e.target as Element).closest<HTMLElement>('.layer-row');
+  if (!row || (e.target as Element).closest('[data-act]')) return;
+  const s = byId(row.dataset.id!)!;
+  renamingId = s.id;
+  const input = h('input', { class: 'layer-rename', value: s.name ?? TYPE_LABEL[s.type] });
+  q('.layer-name', row).replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const end = (save: boolean) => {
+    if (done) return;
+    done = true;
+    renamingId = null;
+    const name = input.value.trim();
+    if (save && name && name !== s.name) {
+      checkpoint();
+      s.name = name;
+    }
+    commit();
+  };
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') end(true);
+    if (ev.key === 'Escape') end(false);
+  });
+  input.addEventListener('blur', () => end(true));
+});
+
+layerList.addEventListener('pointerover', (e) => setHover((e.target as Element).closest<HTMLElement>('.layer-row')?.dataset.id ?? null));
+layerList.addEventListener('pointerleave', () => setHover(null));
+
+// Drag rows to reorder (mouse: after a small move; touch: after a short hold).
+let rowDrag: { id: string; startY: number; active: boolean; timer?: number; pointerId: number } | null = null;
+let dragJustEnded = false;
+const indicator = h('div', { class: 'drop-indicator' });
+
+layerList.addEventListener('pointerdown', (e) => {
+  const row = (e.target as Element).closest<HTMLElement>('.layer-row');
+  if (!row || (e.target as Element).closest('[data-act], input')) return;
+  rowDrag = { id: row.dataset.id!, startY: e.clientY, active: false, pointerId: e.pointerId };
+  if (e.pointerType === 'touch') {
+    rowDrag.timer = window.setTimeout(() => rowDrag && startRowDrag(), 350);
+  }
+});
+
+function startRowDrag() {
+  if (!rowDrag) return;
+  rowDrag.active = true;
+  layerList.setPointerCapture(rowDrag.pointerId);
+  layerList.classList.add('dragging');
+  left.append(indicator);
+}
+
+layerList.addEventListener('pointermove', (e) => {
+  if (!rowDrag) return;
+  if (!rowDrag.active) {
+    if (Math.abs(e.clientY - rowDrag.startY) < 4) return;
+    if (e.pointerType === 'touch') {
+      clearTimeout(rowDrag.timer); // moved before the hold: it's a scroll
+      rowDrag = null;
+      return;
+    }
+    startRowDrag();
+  }
+  e.preventDefault();
+  const { slot, y } = dropSlot(e.clientY);
+  indicator.style.top = `${y - left.getBoundingClientRect().top + left.scrollTop}px`;
+  indicator.dataset.slot = String(slot);
+});
+
+function dropSlot(clientY: number) {
+  const rows = [...layerList.querySelectorAll<HTMLElement>('.layer-row')];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i].getBoundingClientRect();
+    if (clientY < r.top + r.height / 2) return { slot: i, y: r.top };
+  }
+  const last = rows[rows.length - 1].getBoundingClientRect();
+  return { slot: rows.length, y: last.bottom };
+}
+
+function endRowDrag(e: PointerEvent) {
+  if (!rowDrag) return;
+  clearTimeout(rowDrag.timer);
+  const d = rowDrag;
+  rowDrag = null;
+  if (!d.active) return;
+  layerList.classList.remove('dragging');
+  indicator.remove();
+  dragJustEnded = true;
+  setTimeout(() => (dragJustEnded = false));
+  const { slot } = dropSlot(e.clientY);
+  // Rows are shown top-first; the shapes array is bottom-first.
+  const list = shapes();
+  const from = list.findIndex((s) => s.id === d.id);
+  const rowsCount = list.length;
+  let to = rowsCount - slot; // array index the shape should end up before
+  checkpoint();
+  const [moved] = list.splice(from, 1);
+  if (from < to) to--;
+  list.splice(Math.max(0, Math.min(list.length, to)), 0, moved);
+  state.selection = [d.id];
+  discardIfUnchanged();
+  commit();
+}
+layerList.addEventListener('pointerup', endRowDrag);
+layerList.addEventListener('pointercancel', endRowDrag);
+
+// ---- Design panel ----------------------------------------------------------
+
+const right = q('#rightPanel');
+right.innerHTML = `
+  <div class="panel-header"><span class="panel-title">Design</span><button class="sheet-close" data-close="right" aria-label="Close">×</button></div>
+  <div class="design-body"></div>`;
+const designBody = q('.design-body', right);
+let pendingDesign = false;
+
+function renderDesign() {
+  // Rebuilding while typing would steal focus; wait for the field to blur.
+  const active = document.activeElement;
+  if (active && designBody.contains(active) && active.tagName === 'INPUT' && (active as HTMLInputElement).type !== 'color') {
+    pendingDesign = true;
+    return;
+  }
+  pendingDesign = false;
+  const sel = selected();
+  designBody.replaceChildren(
+    ...(sel.length ? [alignSection(), layoutSection(sel)] : [artboardSection()]),
+    fillSection(sel),
+    strokeSection(sel),
+    section('Export', exportControls()),
+  );
+}
+designBody.addEventListener('focusout', () => setTimeout(() => pendingDesign && renderDesign()));
+
+function section(title: string, ...kids: Node[]) {
+  return h('section', { class: 'd-section' }, h('h3', { class: 'd-title' }, title), ...kids);
+}
+
+function artboardSection() {
+  const seg = h('div', { class: 'segmented', role: 'radiogroup' } as Partial<HTMLDivElement>);
+  for (const n of SIZES) {
+    const b = h('button', { class: n === state.doc.size ? 'on' : '', textContent: String(n), title: `${n} × ${n} px` });
+    b.addEventListener('click', () => A.setArtboardSize(n));
+    seg.append(b);
+  }
+  return section(
+    'Artboard',
+    h('div', { class: 'd-row' }, h('span', { class: 'd-label', textContent: 'Size' }), seg),
+    toggleRow('Pixel grid', "Ctrl+'", state.prefs.grid, () => togglePref('grid')),
+    toggleRow('Snap to grid', "Ctrl+Shift+'", state.prefs.snap, () => togglePref('snap')),
+  );
+}
+
+function toggleRow(label: string, keys: string, on: boolean, run: () => void) {
+  const input = h('input', { type: 'checkbox', checked: on, class: 'switch' });
+  input.addEventListener('change', run);
+  return h('label', { class: 'd-row toggle', title: pretty(keys) }, h('span', { class: 'd-label', textContent: label }), input);
+}
+
+function alignSection() {
+  const row = h('div', { class: 'align-row' });
+  const items: [A.Align, string, string][] = [
+    ['left', 'alignLeft', 'Align left'],
+    ['hcenter', 'alignHCenter', 'Align horizontal centers'],
+    ['right', 'alignRight', 'Align right'],
+    ['top', 'alignTop', 'Align top'],
+    ['vcenter', 'alignVCenter', 'Align vertical centers'],
+    ['bottom', 'alignBottom', 'Align bottom'],
+  ];
+  const target = selected().length > 1 ? 'selection' : 'artboard';
+  for (const [how, ic, label] of items) {
+    const b = h('button', { class: 'icon-btn', title: `${label} (to ${target})`, html: icon(ic, 16) });
+    b.addEventListener('click', () => A.align(how));
+    row.append(b);
+  }
+  return h('section', { class: 'd-section' }, row);
+}
+
+function layoutSection(sel: Shape[]) {
+  const box = A.selectionBox(sel)!;
+  const rot = sel.length === 1 ? (sel[0].rotation ?? 0) : 0;
+  const field = (label: string, f: A.GeoField, value: number, extra: Partial<NumOpts> = {}) =>
+    numField({
+      label,
+      value,
+      field: f,
+      onCommit: (v) => A.setGeometry(f, v),
+      onScrub: (v) => A.setGeometry(f, v, { live: true }),
+      ...extra,
+    });
+  return section(
+    'Layout',
+    h('div', { class: 'd-grid' }, field('X', 'x', box.x), field('Y', 'y', box.y), field('W', 'w', box.w, { min: 0.01 }), field('H', 'h', box.h, { min: 0.01 })),
+    h('div', { class: 'd-grid' }, field(icon('rotate', 12), 'rotation', rot, { suffix: '°', title: 'Rotation' })),
+  );
+}
+
+function updateLayoutFields() {
+  const box = A.selectionBox();
+  if (!box) return;
+  const sel = selected();
+  const values: Record<string, number> = { ...box, rotation: sel.length === 1 ? (sel[0].rotation ?? 0) : 0 };
+  designBody.querySelectorAll<HTMLInputElement>('input[data-field]').forEach((inp) => {
+    if (document.activeElement !== inp) inp.value = fmt(values[inp.dataset.field!], inp.dataset.suffix);
+  });
+}
+
+// Fill and stroke act on the selection, or set the style for new shapes.
+function fillSection(sel: Shape[]) {
+  const targets = sel.length ? sel.filter((s) => s.type !== 'line') : [state.prefs.style];
+  if (!targets.length) return h('div'); // lines have no fill
+  const fills = [...new Set(targets.map((s) => s.fill))];
+  const none = fills.every((f) => f === 'none');
+  const sec = paintSection('Fill', 'fill', none, () => A.setStyle({ fill: none ? lastFill() : 'none' }));
+  if (!none && targets.length) sec.append(colorRow(fills.length > 1 ? null : fills[0], (c, live) => A.setStyle({ fill: c }, { live })));
+  if (!sel.length) sec.append(h('p', { class: 'd-hint', textContent: 'Used for new shapes' }));
+  return sec;
+}
+
+function strokeSection(sel: Shape[]) {
+  const targets = sel.length ? sel : [state.prefs.style];
+  const none = targets.every((s) => s.strokeWidth <= 0);
+  const sec = paintSection('Stroke', 'stroke', none, () => A.setStyle(none ? { strokeWidth: 1 } : { strokeWidth: 0 }));
+  if (!none) {
+    const strokes = [...new Set(targets.map((s) => s.stroke))];
+    const widths = [...new Set(targets.map((s) => s.strokeWidth))];
+    sec.append(
+      colorRow(strokes.length > 1 ? null : strokes[0], (c, live) => A.setStyle({ stroke: c }, { live })),
+      h(
+        'div',
+        { class: 'd-grid' },
+        numField({
+          label: 'Weight',
+          value: widths.length > 1 ? null : widths[0],
+          min: 0,
+          step: 0.25,
+          onCommit: (v) => A.setStyle({ strokeWidth: v }),
+          onScrub: (v) => A.setStyle({ strokeWidth: v }, { live: true }),
+          wide: true,
+        }),
+      ),
+    );
+  }
+  return sec;
+}
+
+const lastFill = () => (state.prefs.style.fill !== 'none' ? state.prefs.style.fill : '#D9D9D9');
+
+// Section header with Illustrator's fill/stroke focus (X) and a +/− toggle.
+function paintSection(title: string, which: 'fill' | 'stroke', none: boolean, toggle: () => void) {
+  const head = h('div', { class: 'd-title-row' });
+  const t = h('button', {
+    class: 'd-title focus-title' + (state.focus === which ? ' focused' : ''),
+    textContent: title,
+    title: `Make ${title.toLowerCase()} active — X toggles, / sets none`,
+  });
+  t.addEventListener('click', () => {
+    state.focus = which;
+    emit();
+  });
+  const add = h('button', { class: 'icon-btn', title: none ? `Add ${title.toLowerCase()}` : `Remove ${title.toLowerCase()}`, html: icon(none ? 'plus' : 'minus', 14) });
+  add.addEventListener('click', toggle);
+  head.append(t, add);
+  return h('section', { class: 'd-section' + (none ? ' empty' : '') }, head);
+}
+
+function colorRow(value: string | null, apply: (c: string, live: boolean) => void) {
+  const color = value ?? '#888888';
+  const picker = h('input', { type: 'color', value: color.length === 7 ? color : '#888888', title: 'Pick color' });
+  const swatch = h('label', { class: 'swatch' + (value ? '' : ' mixed') }, picker);
+  swatch.style.setProperty('--c', color);
+  const hex = h('input', { class: 'hex', value: value ? value.replace('#', '').toUpperCase() : 'Mixed', spellcheck: false, title: 'Hex color' });
+
+  // Dragging in the picker previews live; one undo step per pick.
+  let started = false;
+  picker.addEventListener('input', () => {
+    if (!started) {
+      checkpoint();
+      started = true;
+    }
+    swatch.style.setProperty('--c', picker.value);
+    hex.value = picker.value.slice(1).toUpperCase();
+    apply(picker.value.toUpperCase(), true);
+  });
+  picker.addEventListener('change', () => {
+    started = false;
+    discardIfUnchanged();
+    commit();
+  });
+  hex.addEventListener('focus', () => hex.select());
+  hex.addEventListener('change', () => {
+    const c = normalizeHex(hex.value);
+    if (c) apply(c, false);
+    else hex.value = value ? value.slice(1).toUpperCase() : 'Mixed';
+  });
+  hex.addEventListener('keydown', (e) => e.key === 'Enter' && hex.blur());
+  return h('div', { class: 'color-row' }, swatch, hex);
+}
+
+function normalizeHex(v: string) {
+  let s = v.trim().replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/i.test(s)) s = [...s].map((c) => c + c).join('');
+  return /^[0-9a-f]{6}$/i.test(s) ? `#${s.toUpperCase()}` : null;
+}
+
+// ---- Number fields ---------------------------------------------------------
+
+interface NumOpts {
+  label: string; // text or icon HTML
+  value: number | null; // null = mixed
+  field?: string;
+  suffix?: string;
+  title?: string;
+  min?: number;
+  step?: number;
+  wide?: boolean;
+  onCommit: (v: number) => void;
+  onScrub?: (v: number) => void;
+}
+
+const fmt = (v: number, suffix = '') => `${Math.round(v * 100) / 100}${suffix}`;
+
+// Figma-style: drag the label to scrub, arrows to step (Shift ×10), and
+// simple math like "12+4" or "*2" in the box.
+function numField(o: NumOpts) {
+  const step = o.step ?? 1;
+  const input = h('input', { class: 'num-input', inputMode: 'decimal', value: o.value === null ? 'Mixed' : fmt(o.value, o.suffix), spellcheck: false });
+  if (o.field) input.dataset.field = o.field;
+  if (o.suffix) input.dataset.suffix = o.suffix;
+  const label = h('span', { class: 'num-label', html: o.label, title: o.title ?? `Drag to adjust ${o.label}` });
+  const wrap = h('label', { class: 'num' + (o.wide ? ' wide' : '') }, label, input);
+
+  const current = () => parseFloat(input.value) || 0;
+  const clamp = (v: number) => (o.min !== undefined ? Math.max(o.min, v) : v);
+  const commitValue = (v: number) => o.onCommit(clamp(Math.round(v * 100) / 100));
+
+  input.addEventListener('focus', () => input.select());
+  input.addEventListener('change', () => {
+    const v = evaluate(input.value, o.value);
+    if (v === null) input.value = o.value === null ? 'Mixed' : fmt(o.value, o.suffix);
+    else commitValue(v);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') input.blur();
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const v = current() + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1);
+      input.value = fmt(clamp(v), o.suffix);
+      commitValue(v);
+      input.select();
+    }
+  });
+
+  // Scrub by dragging the label.
+  label.addEventListener('pointerdown', (e) => {
+    if (o.value === null || !o.onScrub) return;
+    e.preventDefault();
+    label.setPointerCapture(e.pointerId);
+    const x0 = e.clientX;
+    const v0 = o.value;
+    checkpoint();
+    document.body.classList.add('scrubbing');
+    const move = (ev: PointerEvent) => {
+      const v = clamp(Math.round((v0 + ((ev.clientX - x0) / 2) * step * (ev.shiftKey ? 10 : 1)) * 100) / 100);
+      input.value = fmt(v, o.suffix);
+      o.onScrub!(v);
+    };
+    const up = () => {
+      label.removeEventListener('pointermove', move);
+      document.body.classList.remove('scrubbing');
+      discardIfUnchanged();
+      commit();
+    };
+    label.addEventListener('pointermove', move);
+    label.addEventListener('pointerup', up, { once: true });
+    label.addEventListener('pointercancel', up, { once: true });
+  });
+  return wrap;
+}
+
+// "12", "12+4", "*2" (applies to the current value), "(8+4)/2".
+function evaluate(text: string, current: number | null): number | null {
+  let s = text.replace(/[°px\s]/g, '');
+  if (/^[*/+]/.test(s) && current !== null) s = current + s;
+  if (!/^[\d.+\-*/()]+$/.test(s)) return null;
+  try {
+    const v = Function(`"use strict"; return (${s})`)();
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Export ----------------------------------------------------------------
+
+function exportControls() {
+  const box = h('div', { class: 'export-controls' });
+  const draw = () => {
+    const fmtSeg = h('div', { class: 'segmented' });
+    for (const f of ['svg', 'png'] as const) {
+      const b = h('button', { class: state.prefs.exportFormat === f ? 'on' : '', textContent: f.toUpperCase() });
+      b.addEventListener('click', () => {
+        state.prefs.exportFormat = f;
+        savePrefs();
+        draw();
+      });
+      fmtSeg.append(b);
+    }
+    const kids: Node[] = [fmtSeg];
+    if (state.prefs.exportFormat === 'png') {
+      const chips = h('div', { class: 'chips' });
+      for (const n of PNG_SIZES) {
+        const on = state.prefs.pngSizes.includes(n);
+        const c = h('button', { class: 'chip' + (on ? ' on' : ''), textContent: String(n), title: `${n} × ${n} px` });
+        c.addEventListener('click', () => {
+          const set = new Set(state.prefs.pngSizes);
+          if (set.has(n)) set.delete(n);
+          else set.add(n);
+          if (!set.size) return;
+          state.prefs.pngSizes = [...set].sort((a, b) => a - b);
+          savePrefs();
+          draw();
+        });
+        chips.append(c);
+      }
+      kids.push(chips, h('p', { class: 'd-hint', textContent: 'Several sizes download as one .zip' }));
+    }
+    const go = h('button', { class: 'primary-btn', textContent: `Export ${state.doc.name}` });
+    go.addEventListener('click', async () => {
+      closePop();
+      if (state.prefs.exportFormat === 'svg') exportSvg(state.doc);
+      else await exportPng(state.doc, state.prefs.pngSizes);
+    });
+    kids.push(go);
+    box.replaceChildren(...kids);
+  };
+  draw();
+  return box;
+}
+
+// ---- Help, toast, panels -----------------------------------------------------
+
+const helpDialog = q<HTMLDialogElement>('#helpDialog');
+
+function openHelp() {
+  const groups = [...new Set(SHORTCUTS.map((s) => s.group))];
+  helpDialog.innerHTML = `
+    <div class="help-head"><h2>Keyboard shortcuts</h2><span class="help-sub">Adobe Illustrator layout${navigator.platform.includes('Mac') ? '' : ' · Ctrl = ⌘ on Mac'}</span><button class="sheet-close" value="close" aria-label="Close">×</button></div>
+    <div class="help-cols">${groups
+      .map(
+        (g) => `<section><h3>${g}</h3><dl>${SHORTCUTS.filter((s) => s.group === g)
+          .map((s) => `<div><dt>${escapeHtml(s.label)}</dt><dd>${s.keys.slice(0, 2).map((k) => `<kbd>${escapeHtml(pretty(k))}</kbd>`).join(' ')}</dd></div>`)
+          .join('')}</dl></section>`,
+      )
+      .join('')}</div>
+    <p class="help-note">Tip: in a browser tab, Chrome keeps a few keys for itself (Ctrl+1–3, Ctrl+N). Install Iconic as an app to use every shortcut.</p>`;
+  q('.sheet-close', helpDialog).addEventListener('click', () => helpDialog.close());
+  helpDialog.showModal();
+}
+helpDialog.addEventListener('click', (e) => e.target === helpDialog && helpDialog.close());
+
+const toastEl = q('#toast');
+let toastTimer = 0;
+function toast(msg: string) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 1600);
+}
+
+const mobile = matchMedia('(max-width: 767px)');
+
+// Tab hides panels on desktop (Illustrator); on phones the panels are sheets.
+function togglePanels() {
+  if (mobile.matches) {
+    document.body.classList.remove('sheet-left', 'sheet-right');
+    return;
+  }
+  document.body.classList.toggle('panels-hidden');
+}
+
+function toggleSheet(which: 'left' | 'right') {
+  const cls = `sheet-${which}`;
+  const open = !document.body.classList.contains(cls);
+  document.body.classList.remove('sheet-left', 'sheet-right');
+  if (open) document.body.classList.add(cls);
+}
+document.addEventListener('click', (e) => {
+  const close = (e.target as Element).closest<HTMLElement>('[data-close]');
+  if (close) document.body.classList.remove(`sheet-${close.dataset.close}`);
+});
+
+// ---- Boot --------------------------------------------------------------------
+
+export function initUI() {
+  buildTopbar();
+  installShortcuts({ setTool, togglePanels, openExport, openHelp, toast });
+  subscribe((kind) => {
+    if (kind === 'live') return updateLayoutFields();
+    renderTools();
+    updateTopbar();
+    renderLayers();
+    renderDesign();
+  });
+  onViewChange(updateZoomLabel);
+  setTool('select');
+}

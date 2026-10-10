@@ -3,61 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#1e1e24" />
+    <meta name="theme-color" content="#2c2c2c" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
     <title>Iconic</title>
   </head>
   <body>
-    <header class="toolbar">
-      <div class="group" id="tools">
-        <button data-tool="select" title="Select / move (V)">↖</button>
-        <button data-tool="rect" title="Rectangle (R)">▭</button>
-        <button data-tool="ellipse" title="Ellipse (E)">◯</button>
-        <button data-tool="line" title="Line (L)">╱</button>
-        <button data-tool="bezier" title="Pen: click for corners, drag for curves (P)">✒</button>
-        <button data-tool="freehand" title="Freehand (F)">✎</button>
-      </div>
-      <div class="group">
-        <label title="Fill"><input type="color" id="fill" value="#4f8cff" /></label>
-        <label title="Stroke"><input type="color" id="stroke" value="#1e1e24" /></label>
-        <input type="range" id="strokeWidth" min="0" max="8" step="0.5" value="1" title="Stroke width" />
-        <button id="noFill" title="Toggle no fill">∅</button>
-      </div>
-      <div class="group">
-        <button id="undo" title="Undo (Ctrl+Z)">↶</button>
-        <button id="redo" title="Redo (Ctrl+Y)">↷</button>
-        <button id="delete" title="Delete selected (Del)">🗑</button>
-        <button id="clear" title="New icon">✚</button>
-      </div>
-      <div class="group">
-        <select id="size" title="Artboard size"></select>
-        <button id="exportSvg" title="Export SVG">SVG</button>
-        <button id="exportPng" title="Export PNG">PNG</button>
-      </div>
-      <div class="group">
-        <button id="toggleLayers" title="Layers">☰</button>
-      </div>
-    </header>
-    <div class="workspace">
-      <main class="stage">
-        <svg id="canvas" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"></svg>
+    <div class="app">
+      <header class="topbar" id="topbar"></header>
+      <aside class="panel panel-left" id="leftPanel" aria-label="Layers"></aside>
+      <main class="viewport">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg" aria-label="Canvas"></svg>
       </main>
-      <aside id="layers" class="layers">
-        <h2>Layers</h2>
-        <ul id="layerList"></ul>
-      </aside>
+      <aside class="panel panel-right" id="rightPanel" aria-label="Design"></aside>
     </div>
-    <dialog id="pngDialog">
-      <h2>Export PNG</h2>
-      <p>Pick one or more sizes. Several sizes download as a .zip.</p>
-      <div id="pngSizes" class="png-sizes"></div>
-      <div class="dialog-actions">
-        <button id="pngCancel" type="button">Cancel</button>
-        <button id="pngExport" type="button" class="primary">Export</button>
-      </div>
-    </dialog>
+    <dialog id="helpDialog" class="help"></dialog>
+    <div id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
