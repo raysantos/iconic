@@ -528,8 +528,13 @@ function artboardSection() {
       onCommit: (v) => A.setArtboardGeometry(f, v),
       onScrub: (v) => A.setArtboardGeometry(f, v, { live: true }),
     });
+  // Material's optical sizes; a square artboard of another size (e.g. 16 from an
+  // older document) is shown too, so the current size is always visible.
+  const custom = ab.w === ab.h && !ICON_SIZES.includes(ab.w) ? [ab.w] : [];
   const sizes = segmented(
-    ICON_SIZES.map((n) => [n, String(n), `Scale icon to ${n} dp`] as [number, string, string]),
+    [...ICON_SIZES, ...custom]
+      .sort((a, b) => a - b)
+      .map((n) => [n, String(n), custom.includes(n) ? `Current size (${n} dp) — not a Material optical size` : `Scale icon to ${n} dp`] as [number, string, string]),
     ab.w === ab.h ? ab.w : -1,
     (n) => A.setIconSize(n),
   );

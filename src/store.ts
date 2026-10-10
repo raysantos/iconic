@@ -86,7 +86,7 @@ function loadDoc(): Doc {
   const data = read<Doc | OldDoc | Shape[]>(DOC_KEY);
   // Older saves had a single fixed-size artboard.
   if (Array.isArray(data)) return { name: 'Untitled', artboards: [newArtboard('icon_1')], shapes: data };
-  if (data && 'size' in data) return { name: data.name || 'Untitled', artboards: [newArtboard(snake(data.name || 'icon_1'), 0, 0, data.size)], shapes: data.shapes };
+  if (data && 'size' in data) return { name: data.name || 'Untitled', artboards: [newArtboard(data.name && data.name !== 'Untitled' ? snake(data.name) : 'icon_1', 0, 0, data.size)], shapes: data.shapes };
   if (data && 'artboards' in data && data.artboards.length) return data;
   return { name: 'Untitled', iconStyle: 'outlined', artboards: [newArtboard('icon_1')], shapes: [] };
 }

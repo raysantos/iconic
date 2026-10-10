@@ -468,7 +468,9 @@ body.panels-hidden .panel {
 }
 
 .d-label {
+  flex: none; /* labels keep their width; controls take the rest */
   color: var(--ui-text-2);
+  white-space: nowrap;
 }
 
 .d-hint {
@@ -1167,7 +1169,12 @@ body.scrubbing * {
 }
 
 .d-row .segmented {
+  flex: 1 1 auto;
+  min-width: 0;
   max-width: 170px;
+}
+.segmented button {
+  min-width: 0;
 }
 
 /* ---- Smart guides (Illustrator magenta) & picked anchors ------------------ */
