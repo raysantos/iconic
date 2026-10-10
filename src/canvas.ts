@@ -1355,14 +1355,22 @@ subscribe(() => render());
 // Fit the artboard the first time the canvas has a real size (it can start
 // at 0×0 in a background tab), then just redraw on resizes.
 let fitted = false;
-if (screenSize().w) {
+let lastSize = screenSize();
+if (lastSize.w) {
   fitted = true;
   fitArtboard();
 }
 new ResizeObserver(() => {
-  const { w, h } = screenSize();
-  if (!fitted && w && h) {
+  const size = screenSize();
+  if (!fitted && size.w && size.h) {
     fitted = true;
     fitArtboard();
+  } else if (size.w && size.h && lastSize.w && lastSize.h) {
+    // Keep whatever is in the middle of the view in the middle when the
+    // window resizes, panels toggle (Tab) or a phone rotates.
+    viewState.x += (size.w - lastSize.w) / 2;
+    viewState.y += (size.h - lastSize.h) / 2;
+    applyView();
   } else render();
+  lastSize = size;
 }).observe(svg);
