@@ -72,3 +72,13 @@ Output goes to `dist/`. Every push to `main` deploys automatically to GitHub Pag
 - Outline Stroke and Pathfinder (unite / subtract / intersect), so icons export as single filled paths like Google's
 - Groups (`Ctrl+G`)
 - Icon font / sprite export
+
+## License
+
+Copyright (C) 2026 Ray Santos
+
+Iconic is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; see [LICENSE](LICENSE) for details.
+
+### Third-party software
+
+- [pathkit-wasm](https://www.npmjs.com/package/pathkit-wasm) (Skia PathOps) — Copyright Google LLC, BSD 3-Clause License
