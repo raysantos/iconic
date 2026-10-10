@@ -2,7 +2,7 @@ import './style.css';
 
 // ---- Document model ----------------------------------------------------
 
-type Tool = 'select' | 'rect' | 'ellipse' | 'line' | 'pen';
+type Tool = 'select' | 'rect' | 'ellipse' | 'line' | 'bezier' | 'freehand';
 
 interface Style {
   fill: string; // 'none' or a color
@@ -21,9 +21,18 @@ type Shape =
   | (Base & { type: 'rect'; x: number; y: number; w: number; h: number })
   | (Base & { type: 'ellipse'; cx: number; cy: number; rx: number; ry: number })
   | (Base & { type: 'line'; x1: number; y1: number; x2: number; y2: number })
-  | (Base & { type: 'path'; points: [number, number][] });
+  | (Base & { type: 'path'; points: [number, number][] }) // freehand
+  | (Base & { type: 'bezier'; nodes: BNode[]; closed: boolean });
 
 type Pt = [number, number];
+
+// A Bezier anchor point with optional absolute-position control handles.
+interface BNode {
+  p: Pt;
+  in?: Pt;
+  out?: Pt;
+  smooth?: boolean; // handles stay collinear when one is dragged
+}
 interface Box {
   x: number;
   y: number;
@@ -73,6 +82,8 @@ const snapshot = () => JSON.stringify({ size, shapes } satisfies Doc);
 function restore(json: string) {
   ({ size, shapes } = JSON.parse(json) as Doc);
   selectedId = null;
+  penPath = null;
+  penHover = null;
 }
 
 function save() {
@@ -131,6 +142,10 @@ function shapeToElement(s: Shape): SVGElement {
       el = document.createElementNS(SVG_NS, 'path');
       setAttrs(el, { d: pointsToPath(s.points) });
       break;
+    case 'bezier':
+      el = document.createElementNS(SVG_NS, 'path');
+      setAttrs(el, { d: bezierToPath(s.nodes, s.closed) });
+      break;
   }
   setAttrs(el, {
     fill: s.type === 'line' ? 'none' : s.fill,
@@ -158,6 +173,8 @@ function bbox(s: Shape): Box {
       return fromPoints([[s.x1, s.y1], [s.x2, s.y2]]);
     case 'path':
       return fromPoints(s.points);
+    case 'bezier':
+      return bezierBox(s.nodes, s.closed);
   }
 }
 
@@ -186,6 +203,70 @@ function scaleShape(s: Shape, o: Shape, a: Box, b: Box) {
   else if (s.type === 'ellipse' && o.type === 'ellipse') Object.assign(s, { cx: mx(o.cx), cy: my(o.cy), rx: o.rx * sx, ry: o.ry * sy });
   else if (s.type === 'line' && o.type === 'line') Object.assign(s, { x1: mx(o.x1), y1: my(o.y1), x2: mx(o.x2), y2: my(o.y2) });
   else if (s.type === 'path' && o.type === 'path') s.points = o.points.map(([x, y]) => [mx(x), my(y)]);
+  else if (s.type === 'bezier' && o.type === 'bezier') s.nodes = mapNodes(o.nodes, ([x, y]) => [mx(x), my(y)]);
+}
+
+// ---- Bezier geometry ---------------------------------------------------
+
+function mapNodes(nodes: BNode[], f: (p: Pt) => Pt): BNode[] {
+  return nodes.map((n) => ({ ...n, p: f(n.p), in: n.in && f(n.in), out: n.out && f(n.out) }));
+}
+
+// Each segment as [start, control1, control2, end].
+function segments(nodes: BNode[], closed: boolean): [Pt, Pt, Pt, Pt][] {
+  const segs: [Pt, Pt, Pt, Pt][] = [];
+  const count = closed ? nodes.length : nodes.length - 1;
+  for (let i = 0; i < count; i++) {
+    const a = nodes[i];
+    const b = nodes[(i + 1) % nodes.length];
+    segs.push([a.p, a.out ?? a.p, b.in ?? b.p, b.p]);
+  }
+  return segs;
+}
+
+function bezierToPath(nodes: BNode[], closed: boolean) {
+  if (!nodes.length) return '';
+  const f = ([x, y]: Pt) => `${round(x)} ${round(y)}`;
+  let d = `M${f(nodes[0].p)}`;
+  for (const [, c1, c2, e] of segments(nodes, closed)) d += ` C${f(c1)} ${f(c2)} ${f(e)}`;
+  return closed ? d + ' Z' : d;
+}
+
+// Exact bounds: anchor points plus each segment's extrema (where dx/dt or dy/dt = 0).
+function bezierBox(nodes: BNode[], closed: boolean): Box {
+  const pts: Pt[] = nodes.map((n) => n.p);
+  for (const [a, b, c, d] of segments(nodes, closed)) {
+    for (const axis of [0, 1]) {
+      const A = -a[axis] + 3 * b[axis] - 3 * c[axis] + d[axis];
+      const B = 2 * (a[axis] - 2 * b[axis] + c[axis]);
+      const C = b[axis] - a[axis];
+      const roots = Math.abs(A) < 1e-9 ? (B ? [-C / B] : []) : quadRoots(A, B, C);
+      for (const t of roots) if (t > 0 && t < 1) pts.push(cubicAt(a, b, c, d, t));
+    }
+  }
+  return fromPoints(pts);
+}
+
+function quadRoots(a: number, b: number, c: number) {
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return [];
+  const sq = Math.sqrt(disc);
+  return [(-b + sq) / (2 * a), (-b - sq) / (2 * a)];
+}
+
+function cubicAt(a: Pt, b: Pt, c: Pt, d: Pt, t: number): Pt {
+  const u = 1 - t;
+  const w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+  return [0, 1].map((i) => w[0] * a[i] + w[1] * b[i] + w[2] * c[i] + w[3] * d[i]) as Pt;
+}
+
+// Node editing works in plain canvas coordinates, so fold any rotation into the points.
+function bakeRotation(s: Shape) {
+  if (s.type !== 'bezier' || !s.rotation) return;
+  const c = center(bbox(s));
+  const rot = s.rotation;
+  s.nodes = mapNodes(s.nodes, (p) => rotate(p, rot, c));
+  s.rotation = 0;
 }
 
 function setAttrs(el: Element, attrs: Record<string, string | number>) {
@@ -219,7 +300,11 @@ function render() {
   for (const s of shapes) if (!s.hidden) canvas.append(shapeToElement(s));
 
   const sel = shapes.find((s) => s.id === selectedId);
-  if (sel && !sel.hidden && drag?.mode !== 'create') canvas.append(selectionOverlay(sel));
+  if (penPath) canvas.append(nodeOverlay(penPath));
+  else if (sel && !sel.hidden && drag?.mode !== 'create') {
+    canvas.append(selectionOverlay(sel));
+    if (sel.type === 'bezier' && tool === 'select') canvas.append(nodeOverlay(sel));
+  }
 
   // Moving/resizing doesn't change the list, so skip rebuilding it mid-drag.
   if (!drag || drag.mode === 'create') renderLayers();
@@ -287,11 +372,13 @@ function currentStyle(): Style {
 }
 
 interface Drag {
-  mode: 'create' | 'move' | 'resize' | 'rotate';
+  mode: 'create' | 'move' | 'resize' | 'rotate' | 'pen' | 'node';
   start: Pt;
   shape: Shape;
   original: Shape; // snapshot at drag start
   handle?: Handle;
+  node?: number; // node index for pen / node edits
+  part?: NodePart;
 }
 let drag: Drag | null = null;
 
@@ -300,6 +387,27 @@ canvas.addEventListener('pointerdown', (e) => {
   const p = toCanvas(e);
   const [sx, sy] = [snap(p[0]), snap(p[1])];
   const selected = shapes.find((s) => s.id === selectedId);
+
+  // Bezier points and control handles.
+  const nodeEl = (e.target as Element).closest('[data-node]') as SVGElement | null;
+  if (nodeEl && selected?.type === 'bezier' && !penPath) {
+    checkpoint();
+    bakeRotation(selected);
+    const node = Number(nodeEl.dataset.node);
+    const part = nodeEl.dataset.part as NodePart;
+    if (part === 'p' && isDoubleTap(e, node)) {
+      undoStack.pop();
+      toggleSmooth(selected, node);
+      return;
+    }
+    drag = { mode: 'node', node, part, start: p, shape: selected, original: structuredClone(selected) };
+    return;
+  }
+
+  if (tool === 'bezier') {
+    penDown([sx, sy]);
+    return;
+  }
 
   // Handles work with any tool, so a shape can be adjusted right after drawing it.
   const handle = (e.target as Element).closest('[data-handle]') as SVGElement | null;
@@ -338,11 +446,21 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (!drag) return;
+  if (!drag) {
+    if (penPath) {
+      penHover = toCanvas(e).map(snap) as Pt;
+      render();
+    }
+    return;
+  }
   const p = toCanvas(e);
   const { shape: s, original: o } = drag;
 
-  if (drag.mode === 'move') {
+  if (drag.mode === 'pen') {
+    penDrag(p);
+  } else if (drag.mode === 'node') {
+    editNode(s, o, drag.node!, drag.part!, p);
+  } else if (drag.mode === 'move') {
     moveShape(s, o, snap(p[0] - drag.start[0]), snap(p[1] - drag.start[1]));
   } else if (drag.mode === 'resize') {
     resize(s, o, drag.handle!, p, e.shiftKey);
@@ -397,6 +515,182 @@ function resize(s: Shape, o: Shape, h: Handle, p: Pt, keepRatio: boolean) {
   }
 }
 
+// ---- Bezier pen & node editing -----------------------------------------
+
+type NodePart = 'p' | 'in' | 'out';
+type BezierShape = Extract<Shape, { type: 'bezier' }>;
+
+let penPath: BezierShape | null = null; // path currently being drawn
+let penHover: Pt | null = null; // pointer position for the preview segment
+
+const near = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 14 * unitsPerPx();
+
+function penDown(p: Pt) {
+  if (penPath) {
+    const nodes = penPath.nodes;
+    // Tap the first point to close, or the last point again to finish open.
+    if (nodes.length > 1 && near(p, nodes[0].p)) return finishPen(true);
+    if (near(p, nodes[nodes.length - 1].p)) return finishPen(false);
+    nodes.push({ p });
+  } else {
+    checkpoint();
+    penPath = { id: crypto.randomUUID(), type: 'bezier', nodes: [{ p }], closed: false, ...currentStyle() };
+    penPath.name = nextName('bezier');
+    shapes.push(penPath);
+    selectedId = penPath.id;
+  }
+  drag = { mode: 'pen', start: p, shape: penPath, original: penPath };
+  render();
+}
+
+// Dragging while placing a point pulls out symmetric handles (a smooth point).
+function penDrag(p: Pt) {
+  const n = penPath!.nodes[penPath!.nodes.length - 1];
+  if (near(p, n.p)) {
+    delete n.in;
+    delete n.out;
+    n.smooth = false;
+    return;
+  }
+  n.out = p;
+  n.in = [2 * n.p[0] - p[0], 2 * n.p[1] - p[1]];
+  n.smooth = true;
+}
+
+function finishPen(closed: boolean) {
+  const s = penPath;
+  if (!s) return;
+  penPath = null;
+  penHover = null;
+  if (s.nodes.length < 2) {
+    shapes = shapes.filter((x) => x.id !== s.id);
+    undoStack.pop();
+    selectedId = null;
+  } else {
+    s.closed = closed;
+    if (!closed) s.fill = 'none'; // open paths are line art
+  }
+  drag = null;
+  commit();
+}
+
+function editNode(s: Shape, o: Shape, i: number, part: NodePart, p: Pt) {
+  if (s.type !== 'bezier' || o.type !== 'bezier') return;
+  const n = s.nodes[i];
+  const on = o.nodes[i];
+  if (part === 'p') {
+    // Move the point and carry its handles along.
+    const q: Pt = [snap(p[0]), snap(p[1])];
+    const [dx, dy] = [q[0] - on.p[0], q[1] - on.p[1]];
+    n.p = q;
+    n.in = on.in && [on.in[0] + dx, on.in[1] + dy];
+    n.out = on.out && [on.out[0] + dx, on.out[1] + dy];
+    return;
+  }
+  n[part] = p;
+  const other: NodePart = part === 'in' ? 'out' : 'in';
+  const o2 = on[other];
+  if (n.smooth && o2) {
+    // Keep the opposite handle pointing the other way, at its own length.
+    const len = Math.hypot(o2[0] - on.p[0], o2[1] - on.p[1]);
+    const [vx, vy] = [p[0] - n.p[0], p[1] - n.p[1]];
+    const d = Math.hypot(vx, vy) || 1;
+    n[other] = [n.p[0] - (vx / d) * len, n.p[1] - (vy / d) * len];
+  }
+}
+
+// Double-click (mouse) or double-tap (touch) a point: corner <-> smooth.
+canvas.addEventListener('dblclick', (e) => {
+  const el = (e.target as Element).closest('[data-node]') as SVGElement | null;
+  const s = shapes.find((x) => x.id === selectedId);
+  if (el?.dataset.part === 'p' && s?.type === 'bezier') toggleSmooth(s, Number(el.dataset.node));
+});
+
+let lastTap = { node: -1, time: 0 };
+let lastToggle = 0;
+
+function isDoubleTap(e: PointerEvent, node: number) {
+  if (e.pointerType === 'mouse') return false; // mice get real dblclick events
+  const double = lastTap.node === node && e.timeStamp - lastTap.time < 350;
+  lastTap = { node, time: e.timeStamp };
+  return double;
+}
+
+function toggleSmooth(s: BezierShape, i: number) {
+  // Some touch browsers also fire dblclick after our own double-tap check.
+  if (performance.now() - lastToggle < 500) return;
+  lastToggle = performance.now();
+  checkpoint();
+  bakeRotation(s);
+  const n = s.nodes[i];
+  if (n.in || n.out) {
+    delete n.in;
+    delete n.out;
+    n.smooth = false;
+  } else {
+    // Handles parallel to the line between the neighbouring points.
+    const prev = s.nodes[(i - 1 + s.nodes.length) % s.nodes.length].p;
+    const next = s.nodes[(i + 1) % s.nodes.length].p;
+    const [vx, vy] = [(next[0] - prev[0]) / 6, (next[1] - prev[1]) / 6];
+    n.in = [n.p[0] - vx, n.p[1] - vy];
+    n.out = [n.p[0] + vx, n.p[1] + vy];
+    n.smooth = true;
+  }
+  commit();
+}
+
+function nodeOverlay(s: BezierShape): SVGGElement {
+  const g = document.createElementNS(SVG_NS, 'g');
+  const u = unitsPerPx();
+  if (s.rotation) {
+    const [cx, cy] = center(bbox(s));
+    g.setAttribute('transform', `rotate(${s.rotation} ${cx} ${cy})`);
+  }
+
+  // Preview of the next segment while drawing.
+  if (s === penPath && penHover && !drag) {
+    const last = s.nodes[s.nodes.length - 1];
+    const preview = document.createElementNS(SVG_NS, 'path');
+    const c = last.out ?? last.p;
+    setAttrs(preview, { d: `M${last.p[0]} ${last.p[1]} C${c[0]} ${c[1]} ${penHover[0]} ${penHover[1]} ${penHover[0]} ${penHover[1]}`, 'stroke-width': 1.5 * u });
+    preview.setAttribute('class', 'pen-preview');
+    g.append(preview);
+  }
+
+  s.nodes.forEach((n, i) => {
+    for (const part of ['in', 'out'] as const) {
+      const h = n[part];
+      if (!h) continue;
+      const line = document.createElementNS(SVG_NS, 'line');
+      setAttrs(line, { x1: n.p[0], y1: n.p[1], x2: h[0], y2: h[1], 'stroke-width': 1.5 * u });
+      line.setAttribute('class', 'node-arm');
+      g.append(line, nodeTarget(h, i, part, u, 'node-handle'));
+    }
+  });
+  // Anchor points on top of the handles.
+  s.nodes.forEach((n, i) => {
+    const closeTarget = s === penPath && i === 0 && s.nodes.length > 1;
+    g.append(nodeTarget(n.p, i, 'p', u, 'node-point' + (closeTarget ? ' close-target' : '')));
+  });
+  return g;
+}
+
+function nodeTarget([x, y]: Pt, i: number, part: NodePart, u: number, cls: string): SVGGElement {
+  const g = document.createElementNS(SVG_NS, 'g');
+  g.dataset.node = String(i);
+  g.dataset.part = part;
+  g.setAttribute('class', cls);
+  const dot = document.createElementNS(SVG_NS, part === 'p' ? 'rect' : 'circle');
+  const r = (part === 'p' ? 5 : 4) * u;
+  if (part === 'p') setAttrs(dot, { x: x - r, y: y - r, width: r * 2, height: r * 2, 'stroke-width': 1.5 * u });
+  else setAttrs(dot, { cx: x, cy: y, r, 'stroke-width': 1.5 * u });
+  const hit = document.createElementNS(SVG_NS, 'circle');
+  setAttrs(hit, { cx: x, cy: y, r: 14 * u });
+  hit.setAttribute('class', 'hit');
+  g.append(dot, hit);
+  return g;
+}
+
 function endDrag() {
   if (!drag) return;
   const s = drag.shape;
@@ -409,6 +703,8 @@ function endDrag() {
     } else if (s.type === 'path') s.points = simplify(s.points, 0.15);
   }
   drag = null;
+  // A click that changed nothing shouldn't cost an undo step.
+  if (undoStack.at(-1) === snapshot()) undoStack.pop();
   commit();
 }
 canvas.addEventListener('pointerup', endDrag);
@@ -418,6 +714,7 @@ function isEmpty(s: Shape) {
   if (s.type === 'rect') return s.w === 0 || s.h === 0;
   if (s.type === 'ellipse') return s.rx === 0 || s.ry === 0;
   if (s.type === 'line') return s.x1 === s.x2 && s.y1 === s.y2;
+  if (s.type === 'bezier') return s.nodes.length < 2;
   return s.points.length < 2;
 }
 
@@ -426,6 +723,7 @@ function moveShape(s: Shape, o: Shape, dx: number, dy: number) {
   else if (s.type === 'ellipse' && o.type === 'ellipse') Object.assign(s, { cx: o.cx + dx, cy: o.cy + dy });
   else if (s.type === 'line' && o.type === 'line') Object.assign(s, { x1: o.x1 + dx, y1: o.y1 + dy, x2: o.x2 + dx, y2: o.y2 + dy });
   else if (s.type === 'path' && o.type === 'path') s.points = o.points.map(([x, y]) => [x + dx, y + dy]);
+  else if (s.type === 'bezier' && o.type === 'bezier') s.nodes = mapNodes(o.nodes, ([x, y]) => [x + dx, y + dy]);
 }
 
 // Ramer–Douglas–Peucker: thin out freehand points.
@@ -452,6 +750,7 @@ function distToSegment([px, py]: [number, number], [ax, ay]: [number, number], [
 // ---- Toolbar -----------------------------------------------------------
 
 function setTool(t: Tool) {
+  if (t !== 'bezier') finishPen(false);
   tool = t;
   document.querySelectorAll<HTMLButtonElement>('#tools button').forEach((b) => b.classList.toggle('active', b.dataset.tool === t));
   if (t !== 'select') selectedId = null;
@@ -504,9 +803,14 @@ document.addEventListener('keydown', (e) => {
   else if (mod && e.key.toLowerCase() === 'y') redo(), e.preventDefault();
   else if (mod && e.key === ']') reorderSelected(1), e.preventDefault();
   else if (mod && e.key === '[') reorderSelected(-1), e.preventDefault();
-  else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
+  else if (penPath && (e.key === 'Enter' || e.key === 'Escape')) finishPen(false);
+  else if (penPath && e.key === 'Backspace') {
+    penPath.nodes.pop();
+    if (!penPath.nodes.length) finishPen(false);
+    else commit();
+  } else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
   else if (!mod) {
-    const map: Record<string, Tool> = { v: 'select', r: 'rect', e: 'ellipse', l: 'line', p: 'pen' };
+    const map: Record<string, Tool> = { v: 'select', r: 'rect', e: 'ellipse', l: 'line', p: 'bezier', f: 'freehand' };
     const t = map[e.key.toLowerCase()];
     if (t) setTool(t);
   }
@@ -514,7 +818,7 @@ document.addEventListener('keydown', (e) => {
 
 // ---- Layers ------------------------------------------------------------
 
-const TYPE_LABEL: Record<Shape['type'], string> = { rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', path: 'Path' };
+const TYPE_LABEL: Record<Shape['type'], string> = { rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', path: 'Freehand', bezier: 'Path' };
 
 function nextName(type: Shape['type']) {
   return `${TYPE_LABEL[type]} ${shapes.filter((s) => s.type === type).length + 1}`;

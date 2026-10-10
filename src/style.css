@@ -306,3 +306,31 @@ button.primary {
   font-size: 15px;
   padding: 0 16px;
 }
+
+/* ---- Bezier editing ---- */
+
+#canvas .node-arm {
+  stroke: var(--accent);
+  pointer-events: none;
+}
+#canvas .node-point rect {
+  fill: #fff;
+  stroke: var(--accent);
+}
+#canvas .node-point.close-target rect {
+  fill: var(--accent);
+}
+#canvas .node-handle circle:not(.hit) {
+  fill: var(--accent);
+  stroke: #fff;
+}
+#canvas [data-node] .hit {
+  fill: transparent;
+  cursor: move;
+}
+#canvas .pen-preview {
+  fill: none;
+  stroke: var(--accent);
+  stroke-dasharray: 0.3 0.2;
+  pointer-events: none;
+}
