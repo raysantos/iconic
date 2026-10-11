@@ -1663,3 +1663,15 @@ button.swatch:focus-visible {
   width: 36px;
   flex: none;
 }
+
+/* Tunni lines: dashed line between a curve's handle ends (drag / double-click). */
+#canvas .tunni {
+  stroke: #ff00e6;
+  opacity: 0.7;
+  pointer-events: none;
+}
+#canvas .overlay .tunni-hit {
+  stroke: transparent;
+  pointer-events: stroke;
+  cursor: move;
+}

@@ -181,7 +181,7 @@ function openFlyout(anchor: HTMLElement, gi: number) {
   showPop(anchor.parentElement!, menuList(items));
 }
 
-function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides' | 'mergedPreview' | 'materialMode') {
+function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides' | 'mergedPreview' | 'materialMode' | 'powerNudge') {
   state.prefs[key] = !state.prefs[key];
   savePrefs();
   commit();
@@ -209,6 +209,7 @@ function openMenu(anchor: HTMLElement, which: string) {
         { label: 'Material mode', checked: state.prefs.materialMode, run: () => togglePref('materialMode') },
         { label: 'Merged preview (export)', keys: 'Ctrl+Y', checked: state.prefs.mergedPreview, run: () => togglePref('mergedPreview') },
         ...(state.prefs.materialMode ? [{ label: 'Material keylines', keys: 'Ctrl+;', checked: state.prefs.keylines, run: () => togglePref('keylines') }] : []),
+        { label: 'Power nudge', checked: state.prefs.powerNudge, run: () => togglePref('powerNudge') },
         { label: 'Smart guides', keys: 'Ctrl+U', checked: state.prefs.smartGuides, run: () => togglePref('smartGuides') },
         { label: 'Snap to grid', keys: "Ctrl+Shift+'", checked: state.prefs.snap, run: () => togglePref('snap') },
         { label: 'Hide panels', keys: 'Tab', run: togglePanels },
@@ -637,6 +638,7 @@ function gridSection() {
   return section(
     'Grid',
     toggleRow('Smart guides', 'Ctrl+U', p.smartGuides, () => togglePref('smartGuides')),
+    toggleRow('Power nudge', '', p.powerNudge, () => togglePref('powerNudge')),
     toggleRow('Show grid', "Ctrl+'", p.grid, () => togglePref('grid')),
     labeled('Every', segmented([1, 2, 4, 8].map((n) => [n, n === 1 ? '1 px' : String(n), n === 1 ? 'Pixel grid only' : `Stronger line every ${n} px`] as [number, string, string]), p.gridSize, (n) => setPref('gridSize', n))),
     toggleRow('Snap', "Ctrl+Shift+'", p.snap, () => togglePref('snap')),

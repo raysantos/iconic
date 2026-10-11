@@ -41,6 +41,7 @@ import {
   subscribe,
 } from './store';
 import { paintColor, visibleOn } from './export';
+import { balanceTunni, dragTunni, powerAdjust, segmentAt } from './curvetools';
 import { cubicsToNodes, fitCurve, removeAnchorSmooth, reverseNodes } from './fit';
 import { collectTargets, smartOn, snapBox, snapPoint, type Guide } from './guides';
 import { flattenArtboard, hasPathOps } from './pathops';
@@ -408,6 +409,19 @@ function nodeOverlay(s: BezierShape, sid = s.id): SVGGElement {
     const d = `M${last.p[0]} ${last.p[1]} C${c[0]} ${c[1]} ${penHover[0]} ${penHover[1]} ${penHover[0]} ${penHover[1]}`;
     g.append(el('path', { d, 'stroke-width': u() }, 'pen-preview'));
   }
+  // Tunni lines (Direct Selection): drag to tune both handles of a curve,
+  // double-click to balance them.
+  if (state.tool === 'direct' && s !== penPath) {
+    const count = s.closed ? s.nodes.length : s.nodes.length - 1;
+    for (let seg = 0; seg < count; seg++) {
+      const { b, c } = segmentAt(s.nodes, seg);
+      if (!b || !c) continue;
+      g.append(el('line', { x1: b[0], y1: b[1], x2: c[0], y2: c[1], 'stroke-width': u(), 'stroke-dasharray': `${3 * u()} ${3 * u()}` }, 'tunni'));
+      const hit = el('line', { x1: b[0], y1: b[1], x2: c[0], y2: c[1], 'stroke-width': 10 * u() }, 'tunni-hit');
+      Object.assign(hit.dataset, { tunni: String(seg), sid });
+      g.append(hit);
+    }
+  }
   s.nodes.forEach((n, i) => {
     for (const part of ['in', 'out'] as const) {
       const h = n[part];
@@ -457,7 +471,8 @@ type Gesture =
   | { kind: 'rotate'; pivot: Pt; a0: number; list: Shape[]; originals: Shape[] }
   | { kind: 'create'; start: Pt; shape: Shape }
   | { kind: 'pen'; keepIn?: boolean }
-  | { kind: 'nodes'; lead: { sid: string; i: number }; items: { shape: BezierShape; i: number; orig: BNode }[]; leadOrig: Pt; sids: string[] }
+  | { kind: 'tunni'; shape: BezierShape; seg: number; orig: BNode[]; start: Pt }
+  | { kind: 'nodes'; lead: { sid: string; i: number }; items: { shape: BezierShape; i: number; orig: BNode }[]; leadOrig: Pt; sids: string[]; before: Map<string, BNode[]> }
   | { kind: 'node'; shape: BezierShape; original: BezierShape; node: number; part: NodePart }
   | { kind: 'convert'; shape: BezierShape; node: number; moved: boolean }
   | { kind: 'abMove'; ab: Artboard; start: Pt; x0: number; y0: number; artwork: Shape[]; originals: Shape[]; alt: boolean; copied: boolean }
@@ -542,6 +557,15 @@ svg.addEventListener('pointerdown', (e) => {
   // Clicking anywhere on an artboard makes it the active one.
   state.artboardSelected = false;
   if (bgId) state.activeArtboard = bgId;
+
+  // Tunni line.
+  const tunniEl = target.closest<SVGElement>('[data-tunni]');
+  if (tunniEl?.dataset.sid && !penPath) {
+    checkpoint();
+    const s = ensureBezier(tunniEl.dataset.sid);
+    gesture = { kind: 'tunni', shape: s, seg: Number(tunniEl.dataset.tunni), orig: structuredClone(s.nodes), start: p };
+    return;
+  }
 
   // Anchor points and handles.
   const nodeEl = target.closest<SVGElement>('[data-node]');
@@ -789,6 +813,12 @@ svg.addEventListener('pointermove', (e) => {
     case 'nodes':
       moveAnchors(g, p, e.shiftKey);
       break;
+    case 'tunni': {
+      const { n0, n1 } = segmentAt(g.shape.nodes, g.seg);
+      const o = segmentAt(g.orig, g.seg);
+      dragTunni(n0, n1, o.n0, o.n1, [p[0] - g.start[0], p[1] - g.start[1]]);
+      break;
+    }
     case 'convert': {
       // Convert Anchor drag: pull out fresh symmetric handles.
       const n = g.shape.nodes[g.node];
@@ -966,6 +996,14 @@ function childAt(g: BooleanShape, p: Pt): Shape | null {
 }
 
 svg.addEventListener('dblclick', (e) => {
+  const tunniEl = (e.target as Element).closest<SVGElement>('[data-tunni]');
+  if (tunniEl?.dataset.sid) {
+    checkpoint();
+    const s = ensureBezier(tunniEl.dataset.sid);
+    const { n0, n1 } = segmentAt(s.nodes, Number(tunniEl.dataset.tunni));
+    balanceTunni(n0, n1);
+    return finish();
+  }
   // Double-click a boolean group to select the shape inside it.
   const groupEl = (e.target as Element).closest<SVGElement>('[data-id]');
   const group = groupEl && byId(groupEl.dataset.id!);
@@ -1219,7 +1257,8 @@ function startAnchorDrag(sid: string, i: number, p: Pt, shift: boolean) {
   const bez = new Map(sids.map((id) => [id, ensureBezier(id)]));
   const items = state.anchors.map((a) => ({ shape: bez.get(a.sid)!, i: a.i, orig: structuredClone(bez.get(a.sid)!.nodes[a.i]) }));
   state.selection = [...new Set([...state.selection, ...sids])];
-  gesture = { kind: 'nodes', lead: { sid, i }, items, leadOrig: [...bez.get(sid)!.nodes[i].p] as Pt, sids };
+  const before = new Map(sids.map((id) => [id, structuredClone(bez.get(id)!.nodes)]));
+  gesture = { kind: 'nodes', lead: { sid, i }, items, leadOrig: [...bez.get(sid)!.nodes[i].p] as Pt, sids, before };
   emit();
 }
 
@@ -1228,15 +1267,26 @@ function moveAnchors(g: Extract<Gesture, { kind: 'nodes' }>, p: Pt, shift: boole
   const [dx, dy] = [q[0] - g.leadOrig[0], q[1] - g.leadOrig[1]];
   const off = (v?: Pt): Pt | undefined => v && [v[0] + dx, v[1] + dy];
   for (const it of g.items) Object.assign(it.shape.nodes[it.i], { p: off(it.orig.p), in: off(it.orig.in), out: off(it.orig.out) });
+  if (state.prefs.powerNudge) {
+    for (const sid of g.sids) {
+      const s = g.items.find((it) => it.shape.id === sid)!.shape;
+      const moved = new Set(g.items.filter((it) => it.shape.id === sid).map((it) => it.i));
+      powerAdjust(s.nodes, g.before.get(sid)!, moved, s.closed);
+    }
+  }
 }
 
 export function nudgeAnchors(dx: number, dy: number): boolean {
   if (state.tool !== 'direct' || !state.anchors.length) return false;
   checkpoint();
-  for (const a of state.anchors) {
-    const n = ensureBezier(a.sid).nodes[a.i];
-    const off = (v?: Pt): Pt | undefined => v && [v[0] + dx, v[1] + dy];
-    Object.assign(n, { p: off(n.p), in: off(n.in), out: off(n.out) });
+  const off = (v?: Pt): Pt | undefined => v && [v[0] + dx, v[1] + dy];
+  for (const sid of new Set(state.anchors.map((a) => a.sid))) {
+    const s = ensureBezier(sid);
+    const before = structuredClone(s.nodes);
+    const moved = new Set(state.anchors.filter((a) => a.sid === sid).map((a) => a.i));
+    for (const i of moved) Object.assign(s.nodes[i], { p: off(s.nodes[i].p), in: off(s.nodes[i].in), out: off(s.nodes[i].out) });
+    // Power Nudge: neighbouring curves keep their proportions.
+    if (state.prefs.powerNudge) powerAdjust(s.nodes, before, moved, s.closed);
   }
   commit();
   return true;

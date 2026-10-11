@@ -11,6 +11,7 @@ interface Prefs {
   materialMode: boolean; // Material-specific tools, sizes, naming and export
   keylines: boolean; // Material icon template overlay
   smartGuides: boolean; // Ctrl+U
+  powerNudge: boolean; // moving points keeps neighbouring curves in proportion
   gridSize: number; // major grid spacing in px (1 = pixel grid only)
   snapTo: 'half' | 'pixel' | 'grid';
   abColumns: number; // artboard grid layout
@@ -32,6 +33,7 @@ const DEFAULT_PREFS: Prefs = {
   materialMode: true,
   keylines: true,
   smartGuides: true,
+  powerNudge: true,
   gridSize: 1,
   snapTo: 'pixel',
   abColumns: 4,
