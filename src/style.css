@@ -1720,3 +1720,124 @@ button.swatch:focus-visible {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* ---- Overview grid ----------------------------------------------------------- */
+
+.overview {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas-bg);
+}
+.overview[hidden] {
+  display: none;
+}
+.ov-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-bg);
+}
+.ov-count {
+  color: var(--ui-text-2);
+}
+.ov-search {
+  flex: 1;
+  max-width: 280px;
+  height: 30px;
+  margin-left: auto;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--ui-input);
+  outline: none;
+}
+.ov-search:focus {
+  border-color: var(--accent);
+}
+.ov-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 20px;
+  color: var(--ui-text-2);
+}
+.ov-close:hover {
+  background: var(--ui-hover);
+}
+.ov-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  overflow: auto;
+  align-content: start;
+}
+.ov-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--ui-bg);
+  box-shadow: 0 0 0 1px var(--ui-border);
+  text-align: left;
+}
+.ov-card:hover {
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.ov-card.active {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.ov-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+}
+.ov-meta {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+.ov-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.ov-size {
+  color: var(--ui-text-2);
+  font-variant-numeric: tabular-nums;
+}
+.ov-chips {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 18px;
+}
+.ov-chips .chip {
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 10px;
+  line-height: 18px;
+  background: var(--ui-input);
+  color: var(--ui-text-2);
+}
+.ov-chips .chip.component {
+  background: color-mix(in srgb, var(--component) 18%, transparent);
+  color: var(--component);
+}
+.ov-chips .chip.linked {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+.ov-chips .chip.issues {
+  background: rgb(255 152 0 / 0.16);
+  color: #e65100;
+}

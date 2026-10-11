@@ -4,6 +4,7 @@ import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange,
 import { checkSinglePath, DENSITIES, exportArtboards, fileBase, type ExportFormat, type ExportIssue } from './export';
 import { AUDIT_LABEL, auditShape } from './audit';
 import { openColorPicker } from './colorpicker';
+import { toggleOverview } from './overview';
 import { BADGES, instanceName, resolveSource, type BadgeKey } from './components';
 import { renderShapes } from './svg';
 import { icon } from './icons';
@@ -75,6 +76,7 @@ function buildTopbar() {
     <div class="tb-right">
       <button class="tb-btn sheet-btn" data-sheet="left" title="Layers">${icon('layers', 18)}</button>
       <button class="tb-btn sheet-btn" data-sheet="right" title="Design">${icon('design', 18)}</button>
+      <button class="tb-btn" data-overview title="All icons (${pretty('Ctrl+Shift+O')})">${icon('grid', 18)}</button>
       <button class="zoom-btn" data-menu="zoom" title="Zoom"><span class="zoom-val"></span>${icon('chevron', 12)}</button>
       <button class="export-btn" data-menu="export" title="Export (${pretty('Ctrl+Shift+E')})">Export</button>
     </div>`;
@@ -96,6 +98,7 @@ function buildTopbar() {
     if (flyout) return openFlyout(flyout, Number(flyout.dataset.flyout));
     const menu = t.closest<HTMLElement>('[data-menu]');
     if (menu) return openMenu(menu, menu.dataset.menu!);
+    if (t.closest('[data-overview]')) return toggleOverview();
     const sheet = t.closest<HTMLElement>('[data-sheet]');
     if (sheet) toggleSheet(sheet.dataset.sheet as 'left' | 'right');
   });
@@ -229,6 +232,7 @@ function openMenu(anchor: HTMLElement, which: string) {
         { label: 'Zoom out', keys: 'Ctrl+-', run: () => zoomAt(0.5) },
         { label: 'Zoom to artboard', keys: 'Ctrl+0', run: fitArtboard },
         { label: 'Fit all artboards', keys: 'Ctrl+Alt+0', run: fitAll },
+        { label: 'All icons (overview)', keys: 'Ctrl+Shift+O', run: () => toggleOverview() },
         { label: 'Zoom to selection', keys: 'Shift+2', run: fitSelection },
         { label: 'Actual size (100%)', keys: 'Ctrl+1', run: actualSize },
         { sep: true },

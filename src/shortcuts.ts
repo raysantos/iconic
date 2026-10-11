@@ -2,6 +2,7 @@
 import * as A from './actions';
 import { actualSize, deleteAnchors, finishPen, fitAll, fitArtboard, fitSelection, joinPaths, nudgeAnchors, isDrawingPath, penBackspace, setSpaceHeld, zoomAt } from './canvas';
 import type { BoolOp, Tool } from './model';
+import { toggleOverview } from './overview';
 import { activeArtboard, commit, redo, savePrefs, state, undo } from './store';
 
 export interface AppHooks {
@@ -100,6 +101,7 @@ export const SHORTCUTS: Shortcut[] = [
   { group: 'View', label: 'Smart Guides', keys: ['Ctrl+U'], run: () => togglePref('smartGuides', 'Smart guides') },
   { group: 'View', label: 'Material Keylines', keys: ['Ctrl+;'], run: () => togglePref('keylines', 'Keylines') },
   { group: 'View', label: 'Snap to Grid', keys: ["Ctrl+Shift+'"], run: () => togglePref('snap', 'Snap to grid') },
+  { group: 'View', label: 'Overview (all icons)', keys: ['Ctrl+Shift+O'], run: () => toggleOverview() },
   { group: 'View', label: 'Hide Panels', keys: ['Tab'], run: () => hooks.togglePanels() },
 
   // File
