@@ -1,6 +1,10 @@
 # Iconic — notes for Claude
 
-Iconic is Ray Santos's vector editor for **Google Material icons**. It is an installable PWA that runs on PC and phone. It looks and feels like **Figma** and uses **Adobe Illustrator keyboard shortcuts**. Ray is a designer: explain things in plain language, not jargon.
+Iconic is Ray Santos's vector editor for **Google Material icons**. It is an installable PWA that runs on PC and phone.
+
+**What it is, in one line:** a familiar look and feel (the **Figma** interface with **Adobe Illustrator** shortcuts) that brings **font-editing features** to icon design. Its type-design tools are inspired by FontLab: masters and interpolation, Tunni lines, Power Nudge, Smart Corners, Audit, an overview grid and icon-font export.
+
+Ray is a designer: explain things in plain language, not jargon.
 
 - Repo: https://github.com/raysantos/iconic (public, branch `main`)
 - Live: https://raysantos.github.io/iconic/. Every push to `main` deploys automatically via `.github/workflows/deploy.yml`.
