@@ -189,7 +189,7 @@ export function render() {
     const bg = el('rect', { x: ab.x, y: ab.y, width: ab.w, height: ab.h }, 'artboard');
     bg.dataset.artboardBg = ab.id;
     world.append(bg);
-    if (state.prefs.keylines) world.append(keylineTemplate(ab));
+    if (state.prefs.keylines && state.prefs.materialMode) world.append(keylineTemplate(ab));
     if (state.prefs.grid) world.append(...gridLines(ab));
   }
 
@@ -633,7 +633,7 @@ svg.addEventListener('pointerdown', (e) => {
   const style = { ...state.prefs.style };
   const id = newId();
   let shape: Shape;
-  if (tool === 'rect') shape = { id, type: 'rect', x: sp[0], y: sp[1], w: 0, h: 0, r: ICON_STYLES[state.doc.iconStyle ?? 'outlined'].radius, ...style };
+  if (tool === 'rect') shape = { id, type: 'rect', x: sp[0], y: sp[1], w: 0, h: 0, r: state.prefs.materialMode ? ICON_STYLES[state.doc.iconStyle ?? 'outlined'].radius : 0, ...style };
   else if (tool === 'ellipse') shape = { id, type: 'ellipse', cx: sp[0], cy: sp[1], rx: 0, ry: 0, ...style };
   else if (tool === 'line') shape = { id, type: 'line', x1: sp[0], y1: sp[1], x2: sp[0], y2: sp[1], ...lineStyle(style) };
   else shape = { id, type: 'path', points: [p], ...lineStyle(style), fill: 'none' };

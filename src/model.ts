@@ -30,6 +30,8 @@ export const ICON_STYLES: Record<IconStyle, { cap: Cap; join: Join; radius: numb
 
 // Optical sizes offered by Material Symbols.
 export const ICON_SIZES = [20, 24, 40, 48];
+// Common icon sizes when Material mode is off.
+export const GENERAL_SIZES = [16, 24, 32, 48, 64];
 
 export interface Base extends Style {
   id: string;

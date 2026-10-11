@@ -8,6 +8,7 @@ interface Prefs {
   style: Style; // applied to new shapes; follows the last edited selection, like Illustrator
   grid: boolean;
   snap: boolean;
+  materialMode: boolean; // Material-specific tools, sizes, naming and export
   keylines: boolean; // Material icon template overlay
   smartGuides: boolean; // Ctrl+U
   gridSize: number; // major grid spacing in px (1 = pixel grid only)
@@ -28,6 +29,7 @@ const DEFAULT_PREFS: Prefs = {
   style: { fill: '#000000', stroke: '#000000', strokeWidth: 0, cap: 'butt', join: 'miter' },
   grid: true,
   snap: true,
+  materialMode: true,
   keylines: true,
   smartGuides: true,
   gridSize: 1,

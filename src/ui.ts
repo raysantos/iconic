@@ -6,7 +6,7 @@ import { openColorPicker } from './colorpicker';
 import { BADGES, instanceName, resolveSource, type BadgeKey } from './components';
 import { renderShapes } from './svg';
 import { icon } from './icons';
-import { BOOL_LABEL, ICON_SIZES, TYPE_LABEL, type BoolOp, type Cap, type InstanceShape, type IconStyle, type Join, type Shape, type Tool } from './model';
+import { BOOL_LABEL, GENERAL_SIZES, ICON_SIZES, TYPE_LABEL, type BoolOp, type Cap, type InstanceShape, type IconStyle, type Join, type Shape, type Tool } from './model';
 import { installShortcuts, keyFor, pretty, SHORTCUTS } from './shortcuts';
 import { activeArtboard, allShapes, artboardById, artboards, byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, setActiveArtboard, shapes, state, subscribe, undo } from './store';
 
@@ -181,7 +181,7 @@ function openFlyout(anchor: HTMLElement, gi: number) {
   showPop(anchor.parentElement!, menuList(items));
 }
 
-function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides' | 'mergedPreview') {
+function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides' | 'mergedPreview' | 'materialMode') {
   state.prefs[key] = !state.prefs[key];
   savePrefs();
   commit();
@@ -206,8 +206,9 @@ function openMenu(anchor: HTMLElement, which: string) {
         { label: 'Arrange artboards', run: () => A.arrangeArtboards() },
         { sep: true },
         { label: 'Pixel grid', keys: "Ctrl+'", checked: state.prefs.grid, run: () => togglePref('grid') },
+        { label: 'Material mode', checked: state.prefs.materialMode, run: () => togglePref('materialMode') },
         { label: 'Merged preview (export)', keys: 'Ctrl+Y', checked: state.prefs.mergedPreview, run: () => togglePref('mergedPreview') },
-        { label: 'Material keylines', keys: 'Ctrl+;', checked: state.prefs.keylines, run: () => togglePref('keylines') },
+        ...(state.prefs.materialMode ? [{ label: 'Material keylines', keys: 'Ctrl+;', checked: state.prefs.keylines, run: () => togglePref('keylines') }] : []),
         { label: 'Smart guides', keys: 'Ctrl+U', checked: state.prefs.smartGuides, run: () => togglePref('smartGuides') },
         { label: 'Snap to grid', keys: "Ctrl+Shift+'", checked: state.prefs.snap, run: () => togglePref('snap') },
         { label: 'Hide panels', keys: 'Tab', run: togglePanels },
@@ -508,7 +509,7 @@ let pendingDesign = false;
 function renderDesign() {
   // Rebuilding while typing would steal focus; wait for the field to blur.
   const active = document.activeElement;
-  if (active && designBody.contains(active) && active.tagName === 'INPUT' && (active as HTMLInputElement).type !== 'color') {
+  if (active && designBody.contains(active) && active.tagName === 'INPUT' && !['checkbox', 'color', 'radio', 'range'].includes((active as HTMLInputElement).type)) {
     pendingDesign = true;
     return;
   }
@@ -570,11 +571,12 @@ function artboardSection() {
     });
   // Material's optical sizes; a square artboard of another size (e.g. 16 from an
   // older document) is shown too, so the current size is always visible.
-  const custom = ab.w === ab.h && !ICON_SIZES.includes(ab.w) ? [ab.w] : [];
+  const presets = state.prefs.materialMode ? ICON_SIZES : GENERAL_SIZES;
+  const custom = ab.w === ab.h && !presets.includes(ab.w) ? [ab.w] : [];
   const sizes = segmented(
-    [...ICON_SIZES, ...custom]
+    [...presets, ...custom]
       .sort((a, b) => a - b)
-      .map((n) => [n, String(n), custom.includes(n) ? `Current size (${n} dp) — not a Material optical size` : `Scale icon to ${n} dp`] as [number, string, string]),
+      .map((n) => [n, String(n), custom.includes(n) ? `Current size (${n} px)` : `Scale icon to ${n} ${state.prefs.materialMode ? 'dp' : 'px'}`] as [number, string, string]),
     ab.w === ab.h ? ab.w : -1,
     (n) => A.setIconSize(n),
   );
@@ -588,7 +590,7 @@ function artboardSection() {
     'Artboard',
     name,
     h('div', { class: 'd-grid' }, field('X', 'x'), field('Y', 'y'), field('W', 'w', 1), field('H', 'h', 1)),
-    labeled('Icon size', sizes, 'Material Symbols optical sizes; scales the artwork'),
+    labeled('Icon size', sizes, state.prefs.materialMode ? 'Material Symbols optical sizes; scales the artwork' : 'Scales the artwork'),
     toggleRow('Component', 'Ctrl+Alt+K', !!ab.component, () => A.setComponent(ab.id, !ab.component)),
     h('h4', { class: 'd-subtitle', textContent: 'Artboard grid' }),
     h('div', { class: 'd-grid' }, cols, gap),
@@ -606,8 +608,19 @@ function materialSection() {
     A.iconStyle(),
     (s) => A.setIconStyle(s),
   );
-  return section(
-    'Material',
+  // Material mode switch sits next to the section title; off collapses the section.
+  const on = state.prefs.materialMode;
+  const sw = h('input', { type: 'checkbox', checked: on, class: 'switch', title: on ? 'Turn off Material mode' : 'Turn on Material mode' });
+  sw.setAttribute('aria-label', 'Material mode');
+  sw.addEventListener('change', () => togglePref('materialMode'));
+  const head = h('div', { class: 'd-title-row' }, h('h3', { class: 'd-title', textContent: 'Material' }), sw);
+  if (!on) {
+    return h('section', { class: 'd-section empty' }, head);
+  }
+  return h(
+    'section',
+    { class: 'd-section' },
+    head,
     labeled('Style', style, 'Sets line ends, corners and rectangle corner radius for every shape'),
     toggleRow('Keylines', 'Ctrl+;', state.prefs.keylines, () => togglePref('keylines')),
     toggleRow('Merged preview', 'Ctrl+Y', state.prefs.mergedPreview, () => togglePref('mergedPreview')),
@@ -1010,8 +1023,8 @@ function exportControls() {
       }
       kids.push(chips);
     } else {
-      kids.push(toggleRow('Single path (Google format)', '', p.singlePath, () => set('singlePath', !p.singlePath)));
-      if (p.exportFormat === 'svg' && p.singlePath) kids.push(toggleRow('960 grid (Material Symbols)', '', p.grid960, () => set('grid960', !p.grid960)));
+      kids.push(toggleRow(p.materialMode ? 'Single path (Google format)' : 'Single path (merged)', '', p.singlePath, () => set('singlePath', !p.singlePath)));
+      if (p.exportFormat === 'svg' && p.singlePath && p.materialMode) kids.push(toggleRow('960 grid (Material Symbols)', '', p.grid960, () => set('grid960', !p.grid960)));
       kids.push(toggleRow(p.exportFormat === 'svg' ? 'Use currentColor' : 'Tintable (colorControlNormal)', '', p.currentColor, () => set('currentColor', !p.currentColor)));
     }
     const boards = p.exportAll ? artboards() : [activeArtboard()];

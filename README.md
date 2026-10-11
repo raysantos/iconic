@@ -6,6 +6,7 @@ A vector editor for designing **Google Material icons**, on PC and phone. Figma-
 
 ## Material icons
 
+- **Material mode** switch (next to the Material section title, also in the main menu): on by default; turn it off for general icons — Material options and keylines disappear, sizes become 16/24/32/48/64, and files are named without the `_24dp` suffix
 - **Keyline template** (`Ctrl+;`): 2dp padding, 20dp live area, circle / square / portrait / landscape keylines and center lines, scaled to each artboard
 - **Styles:** Outlined, Rounded, Sharp — sets line ends, corners and rectangle corner radius across the icon
 - **Defaults:** 24dp artboards, solid black fill, whole-pixel snapping, 2dp corner radius on rectangles

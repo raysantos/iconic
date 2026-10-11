@@ -4,6 +4,7 @@
 import { intersects, round, worldBox } from './geometry';
 import type { Artboard, Doc, Shape } from './model';
 import { flattenArtboard, geometryPath, hasPathOps, shapeAreaPath, transformPath } from './pathops';
+import { state } from './store';
 import { exportSvgString } from './svg';
 
 export type ExportFormat = 'svg' | 'xml' | 'png';
@@ -41,8 +42,8 @@ export const snakeName = (s: string) =>
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'icon';
 
-// Material Symbols file naming: add_circle_24dp.svg
-export const fileBase = (ab: Artboard) => `${snakeName(ab.name)}_${round(Math.max(ab.w, ab.h))}dp`;
+// Material Symbols file naming (add_circle_24dp.svg) in Material mode; plain names otherwise.
+export const fileBase = (ab: Artboard) => (state.prefs.materialMode ? `${snakeName(ab.name)}_${round(Math.max(ab.w, ab.h))}dp` : snakeName(ab.name));
 
 export const visibleOn = (shapes: Shape[], ab: Artboard) => shapes.filter((s) => !s.hidden && intersects(worldBox(s), ab));
 
@@ -72,11 +73,12 @@ function layeredSvg(doc: Doc, ab: Artboard, currentColor: boolean) {
 // Google format: <svg ... viewBox="0 -960 960 960" fill="#000"><path d="…"/></svg>
 export function singlePathSvg(doc: Doc, ab: Artboard, opts: Pick<ExportOptions, 'currentColor' | 'grid960'>): string | null {
   const shapes = visibleOn(doc.shapes, ab);
-  const k = opts.grid960 ? 960 / Math.max(ab.w, ab.h) : 1;
-  const flat = flattenArtboard(shapes, ab, k, opts.grid960 ? -ab.h * k : 0);
+  const grid960 = opts.grid960 && state.prefs.materialMode; // the 960 grid is a Material Symbols convention
+  const k = grid960 ? 960 / Math.max(ab.w, ab.h) : 1;
+  const flat = flattenArtboard(shapes, ab, k, grid960 ? -ab.h * k : 0);
   if (!flat) return null;
   const [w, h] = [round(ab.w * k), round(ab.h * k)];
-  const viewBox = opts.grid960 ? `0 ${-h} ${w} ${h}` : `0 0 ${w} ${h}`;
+  const viewBox = grid960 ? `0 ${-h} ${w} ${h}` : `0 0 ${w} ${h}`;
   const fill = opts.currentColor ? 'currentColor' : iconColor(shapes);
   const rule = flat.fillRule === 'evenodd' ? ' fill-rule="evenodd"' : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" height="${round(ab.h)}px" viewBox="${viewBox}" width="${round(ab.w)}px" fill="${fill}"><path d="${flat.d}"${rule}/></svg>`;
