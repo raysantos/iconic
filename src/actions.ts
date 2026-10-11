@@ -1,6 +1,7 @@
 // Editing commands shared by keyboard shortcuts, menus and panels.
 import { bbox, center, moveShape, rotate, scaleKeepingRotation, scaleShape, toBezier, unionBox, worldBox } from './geometry';
 import { auditShape } from './audit';
+import { interpolate } from './masters';
 import { BADGES, BADGE_BOX, resolveSource, type BadgeKey } from './components';
 import { BOOL_LABEL, ICON_STYLES, type Artboard, type BezierShape, type BoolOp, type BooleanShape, type Box, type InstanceShape, type IconStyle, type Pt, type Shape, type Style } from './model';
 import { activeArtboard, allShapes, artboardById, artboards, checkpoint, containerOf, commit, emit, inside, newArtboard, newId, nextArtboardName, savePrefs, selected, setActiveArtboard, shapes, state } from './store';
@@ -713,6 +714,66 @@ export function generateVariants(baseIds: string[], keys: BadgeKey[], circle: bo
       }
     }
     if (made.length) setActiveArtboard(made[0].id, true);
+  });
+  return made;
+}
+
+// ---- Weight masters ----------------------------------------------------------
+
+// Copy the icon onto a second master artboard (to be drawn bolder).
+export function addMaster(id: string): Artboard | null {
+  const base = artboardById(id);
+  if (!base || base.axis || base.masterOf) return null;
+  const [x, y] = freeSlot(base.w, base.h);
+  const master: Artboard = { ...base, id: newId(), name: `${base.name}@700`, x, y, component: false, masterOf: base.id };
+  delete master.axis;
+  edit(() => {
+    const copies = structuredClone(shapesOn(base)).map(withNewIds);
+    for (const s of copies) moveShape(s, structuredClone(s), x - base.x, y - base.y);
+    shapes().push(...copies);
+    artboards().splice(artboards().indexOf(base) + 1, 0, master);
+    base.axis = { master: master.id, from: 400, to: 700 };
+    setActiveArtboard(master.id, true);
+  });
+  return master;
+}
+
+export function setAxisWeights(baseId: string, from: number, to: number) {
+  const base = artboardById(baseId);
+  if (!base?.axis || from === to || !Number.isFinite(from + to)) return;
+  edit(() => {
+    base.axis = { ...base.axis!, from, to };
+    const master = artboardById(base.axis!.master);
+    if (master) master.name = master.name.replace(/@\d+$/, `@${to}`);
+  });
+}
+
+// Generate artboards at the given weights (replacing earlier generated ones).
+export function generateWeights(baseId: string, weights: number[]): Artboard[] {
+  const base = artboardById(baseId);
+  const master = base?.axis && artboardById(base.axis.master);
+  if (!base?.axis || !master || !weights.length) return [];
+  const { from, to } = base.axis;
+  const made: Artboard[] = [];
+  edit(() => {
+    // Drop the previous set (and its artwork).
+    for (const old of artboards().filter((a) => a.generated?.from === base.id)) {
+      const gone = new Set(shapesOn(old));
+      state.doc.shapes = shapes().filter((s) => !gone.has(s));
+      artboards().splice(artboards().indexOf(old), 1);
+    }
+    for (const w of [...weights].sort((a, b) => a - b)) {
+      const list = interpolate(base, master, (w - from) / (to - from));
+      if (!list) continue;
+      const [x, y] = freeSlot(base.w, base.h);
+      const ab: Artboard = { ...newArtboard(`${base.name}_wght${w}`, x, y, base.w), h: base.h, generated: { from: base.id, weight: w } };
+      artboards().push(ab);
+      for (const s of list.map(withNewIds)) {
+        moveShape(s, structuredClone(s), x - base.x, y - base.y);
+        shapes().push(s);
+      }
+      made.push(ab);
+    }
   });
   return made;
 }

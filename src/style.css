@@ -1841,3 +1841,46 @@ button.swatch:focus-visible {
   background: rgb(255 152 0 / 0.16);
   color: #e65100;
 }
+
+/* ---- Weight masters ------------------------------------------------------------ */
+
+.d-hint.ok {
+  color: #188038;
+  font-weight: 600;
+}
+.d-hint.warn {
+  color: #e65100;
+  font-weight: 600;
+}
+.weight-preview-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+.weight-preview {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--ui-border);
+}
+.weight-controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  flex: 1;
+  min-width: 0;
+}
+.weight-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.weight-slider {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: var(--accent);
+}
+.chip:disabled {
+  opacity: 0.35;
+}

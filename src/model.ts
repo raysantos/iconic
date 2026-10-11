@@ -78,6 +78,9 @@ export interface Artboard {
   w: number;
   h: number;
   component?: boolean; // can be placed in other icons as a linked instance
+  axis?: { master: string; from: number; to: number }; // weight masters: this artboard is weight from, the master is weight to
+  masterOf?: string; // this artboard is the second master of another
+  generated?: { from: string; weight: number }; // made by Generate weights
 }
 
 export interface Doc {

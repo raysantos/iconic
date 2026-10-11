@@ -7,7 +7,8 @@ import { openColorPicker } from './colorpicker';
 import { exportIconFont } from './fontexport';
 import { toggleOverview } from './overview';
 import { BADGES, instanceName, resolveSource, type BadgeKey } from './components';
-import { renderShapes } from './svg';
+import { el, renderShapes } from './svg';
+import { compatibility, interpolate, WEIGHTS } from './masters';
 import { icon } from './icons';
 import { toBezier } from './geometry';
 import { BOOL_LABEL, GENERAL_SIZES, ICON_SIZES, TYPE_LABEL, type BoolOp, type Cap, type InstanceShape, type IconStyle, type Join, type Shape, type Tool } from './model';
@@ -525,7 +526,7 @@ function renderDesign() {
   pendingDesign = false;
   const sel = selected();
   designBody.replaceChildren(
-    ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel), elementSection(sel), auditSection(sel)] : [artboardSection(), materialSection(), gridSection()]),
+    ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel), elementSection(sel), auditSection(sel)] : [artboardSection(), weightSection(), materialSection(), gridSection()]),
     fillSection(sel),
     strokeSection(sel),
     section('Export', exportControls()),
@@ -1360,6 +1361,93 @@ function openVariants() {
     h('div', { class: 'dialog-actions' }, cancel, create),
   );
   dlg.showModal();
+}
+
+// ---- Weight masters (variable-font style) ------------------------------------
+
+let previewWeight = 500;
+const pickedWeights = new Set<number>([100, 200, 300, 500, 600]);
+
+function weightSection(): Node {
+  const ab = activeArtboard();
+  const base = ab.axis ? ab : ab.masterOf ? artboardById(ab.masterOf) : null;
+  const master = base?.axis ? artboardById(base.axis.master) : null;
+
+  if (!base || !master || !base.axis) {
+    if (ab.generated) return section('Weight', h('p', { class: 'd-hint', textContent: `Generated at weight ${ab.generated.weight}. Edit the masters and generate again.` }));
+    const add = h('button', { class: 'secondary-btn', textContent: 'Add bold master' });
+    add.addEventListener('click', () => {
+      if (A.addMaster(ab.id)) {
+        fitAll();
+        toast('Bold master added — make it bolder, then generate weights');
+      }
+    });
+    return section('Weight', h('p', { class: 'd-hint', textContent: 'Draw this icon at two weights; Iconic makes every weight in between.' }), add);
+  }
+
+  const { from, to } = base.axis;
+  const problems = compatibility(base, master);
+  const kids: Node[] = [];
+  kids.push(
+    h(
+      'div',
+      { class: 'd-grid' },
+      numField({ label: base.name.length > 10 ? 'Base' : base.name, title: `Weight of ${base.name}`, value: from, min: 1, step: 100, wide: false, onCommit: (v) => A.setAxisWeights(base.id, v, to) }),
+      numField({ label: 'Bold', title: `Weight of ${master.name}`, value: to, min: 1, step: 100, wide: false, onCommit: (v) => A.setAxisWeights(base.id, from, v) }),
+    ),
+  );
+
+  if (problems.length) {
+    const ul = h('ul', { class: 'audit-list' });
+    for (const p of problems.slice(0, 6)) ul.append(h('li', {}, h('span', { class: 'audit-dot' }), h('span', { class: 'audit-text', textContent: p })));
+    kids.push(h('p', { class: 'd-hint warn', textContent: 'Masters aren’t compatible yet:' }), ul);
+    return section('Weight', ...kids);
+  }
+  kids.push(h('p', { class: 'd-hint ok', textContent: '✓ Masters are compatible' }));
+
+  // Live preview: slide through the weights.
+  const preview = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  preview.setAttribute('class', 'weight-preview');
+  preview.setAttribute('viewBox', `${base.x} ${base.y} ${base.w} ${base.h}`);
+  const value = h('span', { class: 'weight-value' });
+  const draw = () => {
+    const list = interpolate(base, master, (previewWeight - from) / (to - from)) ?? [];
+    preview.replaceChildren(el('rect', { x: base.x, y: base.y, width: base.w, height: base.h, fill: '#fff' }), ...renderShapes(list));
+    value.textContent = String(previewWeight);
+  };
+  const slider = h('input', { type: 'range', min: '100', max: '900', step: '10', value: String(previewWeight), class: 'weight-slider' });
+  slider.setAttribute('aria-label', 'Preview weight');
+  slider.addEventListener('input', () => {
+    previewWeight = Number(slider.value);
+    draw();
+  });
+  draw();
+  kids.push(h('div', { class: 'weight-preview-row' }, preview, h('div', { class: 'weight-controls' }, h('span', { class: 'd-label', textContent: 'Preview' }), value, slider)));
+
+  // Weights to generate (Material Symbols' 100–700).
+  const chips = h('div', { class: 'chips' });
+  for (const w of WEIGHTS) {
+    const isMaster = w === from || w === to;
+    const on = pickedWeights.has(w) && !isMaster;
+    const c = h('button', { class: 'chip' + (on ? ' on' : ''), textContent: String(w), title: isMaster ? 'A master is drawn at this weight' : `Generate weight ${w}`, disabled: isMaster });
+    c.addEventListener('click', () => {
+      if (pickedWeights.has(w)) pickedWeights.delete(w);
+      else pickedWeights.add(w);
+      renderDesign();
+    });
+    chips.append(c);
+  }
+  const chosen = WEIGHTS.filter((w) => pickedWeights.has(w) && w !== from && w !== to);
+  const gen = h('button', { class: 'secondary-btn', textContent: chosen.length ? `Generate ${chosen.length} weight${chosen.length > 1 ? 's' : ''}` : 'Pick weights to generate', disabled: !chosen.length });
+  gen.addEventListener('click', () => {
+    const made = A.generateWeights(base.id, chosen);
+    if (made.length) {
+      fitAll();
+      toast(`Generated ${made.length} weights — ${made.map((a) => a.name).join(', ')}`);
+    }
+  });
+  kids.push(h('h4', { class: 'd-subtitle', textContent: 'Generate weights' }), chips, gen);
+  return section('Weight', ...kids);
 }
 
 // ---- Help, toast, panels -----------------------------------------------------

@@ -63,6 +63,9 @@ function render() {
         ab.component ? '<span class="chip component">Component</span>' : '',
         linked ? '<span class="chip linked">Linked</span>' : '',
         issues ? `<span class="chip issues">${issues} issue${issues > 1 ? 's' : ''}</span>` : '',
+        ab.axis ? '<span class="chip linked">Master ' + ab.axis.from + '</span>' : '',
+        ab.masterOf ? '<span class="chip linked">Master</span>' : '',
+        ab.generated ? '<span class="chip">Weight ' + ab.generated.weight + '</span>' : '',
         !on.length ? '<span class="chip empty">Empty</span>' : '',
       ].join('');
       card.append(thumb(ab));

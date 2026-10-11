@@ -15,11 +15,21 @@ A vector editor for designing **Google Material icons**, on PC and phone. Figma-
 - **Google-format export (default):** each icon becomes **one filled path** — strokes outlined, shapes merged, clipped to the artboard — on Material Symbols' 960-unit grid (`viewBox="0 -960 960 960"`), exactly like Google's downloads. Your document stays editable.
 - **Export checks:** before a single-path export, Iconic renders the working icon and the merged path and compares them pixel by pixel, and warns about multiple colors, white shapes faking holes (one-click **Convert to Subtract**) and artwork outside the artboard
 - **Merged preview** (`Ctrl+Y`): see every icon exactly as it will export, while still editing the shapes
-- **Formats:** SVG (optional `currentColor`), **Android Vector Drawable** XML (optional `colorControlNormal` tint), PNG at Android densities (mdpi–xxxhdpi, zipped into `drawable-*` folders); one artboard or all of them
+- **Formats:** SVG (optional `currentColor`), **Android Vector Drawable** XML (optional `colorControlNormal` tint), PNG at Android densities (mdpi–xxxhdpi, zipped into `drawable-*` folders), and an **icon font**; one artboard or all of them
+
+## Type-design tools (from FontLab)
+
+- **Weight masters:** draw an icon at two weights (Add bold master), check that they're compatible (same shapes, same point structure), preview any weight with a slider, and generate artboards at Material Symbols weights 100–700 (`name_wght300`, …)
+- **Tunni lines:** with Direct Selection, a dashed line joins each curve's handle ends — drag it to make the curve fuller or flatter, double-click to balance the handles
+- **Power Nudge:** moving or nudging points keeps neighbouring curves in proportion (toggle in Grid)
+- **Smart Corners:** live rounded corners on any sharp point of any path (R field), kept as a single editable point
+- **Audit:** flags almost-straight lines, missing extreme points, tiny segments, off-grid points and redundant points, with Fix / Fix all
+- **Overview** (`Ctrl+Shift+O`): every icon in a grid with name, size and status (component, linked, master, weight, audit issues)
+- **Icon font export:** OTF + WOFF with a ligature per icon name (type `home` → icon), Private Use Area codepoints, CSS, a codepoints file and a demo page
 
 ## Components, badges & variants (modifier icons)
 
-- **Components** (`Ctrl+Alt+K`): turn any artboard into a reusable component and place linked **instances** of it in other icons (Assets tab). Edit the component once and every instance updates; double-click an instance to jump to its component; **Detach** (`Ctrl+Alt+B`) turns it into editable shapes
+- **Components** (`Ctrl+Alt+K`): turn any artboard — or selected shapes, like an arrowhead — into a reusable component and place linked **instances** of it in other icons (Assets tab). Edit the component once and every instance updates; double-click an instance to jump to its component; **Detach** (`Ctrl+Alt+B`) turns it into editable shapes
 - **Badges:** plus, minus, check, close, alert, up, down — **bare** or in a **circle** — dropped into the icon's corner slot, sized for the 24dp grid and colored to match the icon
 - **Knockout gap:** a badge cuts clearance (default 1.5dp, adjustable) out of everything beneath it, following the badge's exact shape — live on the canvas and exact in the single-path export
 - **Make variants:** pick base icons and badges; Iconic creates every combination as linked artboards named Material-style (`file_add`, `file_remove_circle`, …)
@@ -103,4 +113,5 @@ Iconic is free software: you can redistribute it and/or modify it under the term
 ### Third-party software
 
 - [pathkit-wasm](https://www.npmjs.com/package/pathkit-wasm) (Skia PathOps) — Copyright Google LLC, BSD 3-Clause License
+- [opentype.js](https://github.com/opentypejs/opentype.js) — Copyright Frederik De Bleser, MIT License (loaded only for font export)
 - [Roboto Flex](https://github.com/googlefonts/roboto-flex) via [@fontsource-variable/roboto-flex](https://www.npmjs.com/package/@fontsource-variable/roboto-flex) — Copyright The Roboto Flex Project Authors, SIL Open Font License 1.1
