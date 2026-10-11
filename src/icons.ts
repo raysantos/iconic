@@ -40,6 +40,18 @@ const P: Record<string, string> = {
   intersect: '<rect x="4" y="4" width="10" height="10"/><rect x="10" y="10" width="10" height="10"/><rect x="10" y="10" width="4" height="4" fill="currentColor" stroke="none"/>',
   exclude: '<path d="M4 4h10v6h-4v4H4zM14 10h6v10H10v-6h4z" fill="currentColor" stroke="none"/><rect x="10" y="10" width="4" height="4"/>',
   component: '<path d="M12 2.8 15.2 6 12 9.2 8.8 6zM6 8.8 9.2 12 6 15.2 2.8 12zM18 8.8 21.2 12 18 15.2 14.8 12zM12 14.8 15.2 18 12 21.2 8.8 18z"/>',
+  // Material styles: a corner drawn as an outline, rounded, and sharp.
+  styleOutlined: '<path d="M5 20V9a4 4 0 0 1 4-4h11" stroke-width="2.4"/>',
+  styleRounded: '<path d="M6 19V10a4 4 0 0 1 4-4h9" stroke-width="5"/>',
+  styleSharp: '<path d="M6.5 20V6.5H20" stroke-width="5" stroke-linecap="butt" stroke-linejoin="miter"/>',
+  // Stroke corners (joins): sharp, rounded, cut off by a line.
+  joinMiter: '<path d="M4 20V4h16v5H9v11z" fill="currentColor" stroke="none"/>',
+  joinRound: '<path d="M4 20v-8a8 8 0 0 1 8-8h8v5h-8a3 3 0 0 0-3 3v8z" fill="currentColor" stroke="none"/>',
+  joinBevel: '<path d="M4 20V9l5-5h11v5H9v11z" fill="currentColor" stroke="none"/>',
+  // Stroke ends (caps), against a guide marking where the path ends.
+  capButt: '<rect x="8" y="9" width="13" height="6" fill="currentColor" stroke="none"/><path d="M8 4v16" stroke-width="1" opacity=".55"/>',
+  capRound: '<path d="M8 9h13v6H8a3 3 0 0 1 0-6z" fill="currentColor" stroke="none"/><path d="M8 4v16" stroke-width="1" opacity=".55"/>',
+  capSquare: '<rect x="5" y="9" width="16" height="6" fill="currentColor" stroke="none"/><path d="M8 4v16" stroke-width="1" opacity=".55"/>',
   keyboard: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
 };
 

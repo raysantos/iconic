@@ -1651,3 +1651,15 @@ button.swatch:focus-visible {
 .d-row + .d-grid {
   margin-top: 8px;
 }
+
+/* Icon segmented controls (Material style, stroke ends and corners). */
+.segmented.icons {
+  flex: 0 0 auto;
+  max-width: none;
+}
+.segmented.icons button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  flex: none;
+}

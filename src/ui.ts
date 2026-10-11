@@ -537,6 +537,20 @@ function segmented<T extends string | number>(opts: [T, string, string?][], curr
   return seg;
 }
 
+// Segmented control with icons; the name stays available as tooltip and label.
+function iconSegmented<T extends string>(opts: [T, string, string][], current: T, pick: (v: T) => void) {
+  const seg = h('div', { class: 'segmented icons', role: 'radiogroup' } as Partial<HTMLDivElement>);
+  for (const [v, ic, name] of opts) {
+    const b = h('button', { class: v === current ? 'on' : '', title: name, html: icon(ic, 18) });
+    b.setAttribute('aria-label', name);
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(v === current));
+    b.addEventListener('click', () => pick(v));
+    seg.append(b);
+  }
+  return seg;
+}
+
 const labeled = (label: string, control: Node, title = '') => h('div', { class: 'd-row', title }, h('span', { class: 'd-label', textContent: label }), control);
 
 // The active artboard: name, position/size, Material icon size, and grid layout.
@@ -583,11 +597,11 @@ function artboardSection() {
 }
 
 function materialSection() {
-  const style = segmented<IconStyle>(
+  const style = iconSegmented<IconStyle>(
     [
-      ['outlined', 'Outlined'],
-      ['rounded', 'Rounded'],
-      ['sharp', 'Sharp'],
+      ['outlined', 'styleOutlined', 'Outlined'],
+      ['rounded', 'styleRounded', 'Rounded'],
+      ['sharp', 'styleSharp', 'Sharp'],
     ],
     A.iconStyle(),
     (s) => A.setIconStyle(s),
@@ -772,11 +786,11 @@ function strokeSection(sel: Shape[]) {
       ),
       labeled(
         'Ends',
-        segmented<Cap>(
+        iconSegmented<Cap>(
           [
-            ['butt', 'Butt'],
-            ['round', 'Round'],
-            ['square', 'Square'],
+            ['butt', 'capButt', 'Butt — ends exactly at the point'],
+            ['round', 'capRound', 'Round — rounded past the point'],
+            ['square', 'capSquare', 'Square — squared off past the point'],
           ],
           common(targets.map((s) => s.cap ?? 'round')),
           (cap) => A.setStyle({ cap }),
@@ -784,11 +798,11 @@ function strokeSection(sel: Shape[]) {
       ),
       labeled(
         'Corners',
-        segmented<Join>(
+        iconSegmented<Join>(
           [
-            ['miter', 'Miter'],
-            ['round', 'Round'],
-            ['bevel', 'Bevel'],
+            ['miter', 'joinMiter', 'Miter — sharp corner'],
+            ['round', 'joinRound', 'Round — rounded corner'],
+            ['bevel', 'joinBevel', 'Bevel — corner cut off by a line'],
           ],
           common(targets.map((s) => s.join ?? 'round')),
           (join) => A.setStyle({ join }),
