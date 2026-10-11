@@ -1645,3 +1645,9 @@ button.swatch:focus-visible {
 .panel-header .badge-style .segmented button {
   padding: 0 6px;
 }
+
+/* Consistent 8px rhythm between field grids and label rows in the Design panel. */
+.d-grid + .d-row,
+.d-row + .d-grid {
+  margin-top: 8px;
+}
