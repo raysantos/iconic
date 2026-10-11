@@ -1675,3 +1675,48 @@ button.swatch:focus-visible {
   pointer-events: stroke;
   cursor: move;
 }
+
+/* ---- Audit ------------------------------------------------------------------- */
+
+#canvas .overlay .audit-mark {
+  fill: rgb(255 152 0 / 0.25);
+  stroke: #ff9800;
+  pointer-events: all;
+  cursor: pointer;
+}
+.audit-list {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.audit-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.audit-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff9800;
+}
+.audit-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.audit-text span {
+  color: var(--ui-text-2);
+}
+.icon-btn.audit-fix {
+  width: auto;
+  padding: 0 8px;
+  color: var(--accent);
+  font-weight: 600;
+}

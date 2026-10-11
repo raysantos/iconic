@@ -41,6 +41,7 @@ import {
   subscribe,
 } from './store';
 import { paintColor, visibleOn } from './export';
+import { AUDIT_LABEL, auditShape } from './audit';
 import { balanceTunni, dragTunni, powerAdjust, segmentAt } from './curvetools';
 import { cubicsToNodes, fitCurve, removeAnchorSmooth, reverseNodes } from './fit';
 import { collectTargets, smartOn, snapBox, snapPoint, type Guide } from './guides';
@@ -240,6 +241,20 @@ export function render() {
   const ab = activeArtboard();
   if (state.artboardSelected || state.tool === 'artboard') overlay.append(artboardBox(ab, state.tool === 'artboard' || state.tool === 'select'));
 
+  // Audit markers: geometry problems, with the reason on hover.
+  if (state.prefs.audit && !penPath) {
+    for (const s of allShapes()) {
+      if (s.hidden || s.locked) continue;
+      for (const issue of auditShape(s)) {
+        const m = el('circle', { cx: issue.at[0], cy: issue.at[1], r: 4 * u(), 'stroke-width': 1.5 * u() }, 'audit-mark');
+        m.dataset.audit = s.id;
+        const t = el('title');
+        t.textContent = `${AUDIT_LABEL[issue.kind]}: ${issue.message}`;
+        m.append(t);
+        overlay.append(m);
+      }
+    }
+  }
   if (guides.length) overlay.append(guideOverlay());
   if (marquee) overlay.append(el('rect', { x: marquee.x, y: marquee.y, width: marquee.w, height: marquee.h, 'stroke-width': u() }, 'marquee'));
 }
@@ -557,6 +572,13 @@ svg.addEventListener('pointerdown', (e) => {
   // Clicking anywhere on an artboard makes it the active one.
   state.artboardSelected = false;
   if (bgId) state.activeArtboard = bgId;
+
+  // Audit marker: select the path it belongs to.
+  const auditEl = target.closest<SVGElement>('[data-audit]');
+  if (auditEl?.dataset.audit) {
+    state.selection = [auditEl.dataset.audit];
+    return emit();
+  }
 
   // Tunni line.
   const tunniEl = target.closest<SVGElement>('[data-tunni]');

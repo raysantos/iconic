@@ -2,6 +2,7 @@
 import * as A from './actions';
 import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setCursor, setHover, viewState, zoomAt, zoomTo } from './canvas';
 import { checkSinglePath, DENSITIES, exportArtboards, fileBase, type ExportFormat, type ExportIssue } from './export';
+import { AUDIT_LABEL, auditShape } from './audit';
 import { openColorPicker } from './colorpicker';
 import { BADGES, instanceName, resolveSource, type BadgeKey } from './components';
 import { renderShapes } from './svg';
@@ -182,7 +183,7 @@ function openFlyout(anchor: HTMLElement, gi: number) {
   showPop(anchor.parentElement!, menuList(items));
 }
 
-function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides' | 'mergedPreview' | 'materialMode' | 'powerNudge') {
+function togglePref(key: 'grid' | 'snap' | 'keylines' | 'smartGuides' | 'mergedPreview' | 'materialMode' | 'powerNudge' | 'audit') {
   state.prefs[key] = !state.prefs[key];
   savePrefs();
   commit();
@@ -211,6 +212,7 @@ function openMenu(anchor: HTMLElement, which: string) {
         { label: 'Merged preview (export)', keys: 'Ctrl+Y', checked: state.prefs.mergedPreview, run: () => togglePref('mergedPreview') },
         ...(state.prefs.materialMode ? [{ label: 'Material keylines', keys: 'Ctrl+;', checked: state.prefs.keylines, run: () => togglePref('keylines') }] : []),
         { label: 'Power nudge', checked: state.prefs.powerNudge, run: () => togglePref('powerNudge') },
+        { label: 'Audit', checked: state.prefs.audit, run: () => togglePref('audit') },
         { label: 'Smart guides', keys: 'Ctrl+U', checked: state.prefs.smartGuides, run: () => togglePref('smartGuides') },
         { label: 'Snap to grid', keys: "Ctrl+Shift+'", checked: state.prefs.snap, run: () => togglePref('snap') },
         { label: 'Hide panels', keys: 'Tab', run: togglePanels },
@@ -518,7 +520,7 @@ function renderDesign() {
   pendingDesign = false;
   const sel = selected();
   designBody.replaceChildren(
-    ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel)] : [artboardSection(), materialSection(), gridSection()]),
+    ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel), auditSection(sel)] : [artboardSection(), materialSection(), gridSection()]),
     fillSection(sel),
     strokeSection(sel),
     section('Export', exportControls()),
@@ -640,6 +642,7 @@ function gridSection() {
     'Grid',
     toggleRow('Smart guides', 'Ctrl+U', p.smartGuides, () => togglePref('smartGuides')),
     toggleRow('Power nudge', '', p.powerNudge, () => togglePref('powerNudge')),
+    toggleRow('Audit', '', p.audit, () => togglePref('audit')),
     toggleRow('Show grid', "Ctrl+'", p.grid, () => togglePref('grid')),
     labeled('Every', segmented([1, 2, 4, 8].map((n) => [n, n === 1 ? '1 px' : String(n), n === 1 ? 'Pixel grid only' : `Stronger line every ${n} px`] as [number, string, string]), p.gridSize, (n) => setPref('gridSize', n))),
     toggleRow('Snap', "Ctrl+Shift+'", p.snap, () => togglePref('snap')),
@@ -662,6 +665,24 @@ function toggleRow(label: string, keys: string, on: boolean, run: () => void) {
   const input = h('input', { type: 'checkbox', checked: on, class: 'switch' });
   input.addEventListener('change', run);
   return h('label', { class: 'd-row toggle', title: pretty(keys) }, h('span', { class: 'd-label', textContent: label }), input);
+}
+
+// Geometry problems in the selected paths, each with a fix.
+function auditSection(sel: Shape[]): Node {
+  if (!state.prefs.audit) return h('span');
+  const paths = sel.flatMap((s) => allShapes([s]));
+  const issues = paths.flatMap((s) => auditShape(s).map((issue, index) => ({ issue, index })));
+  if (!issues.length) return h('span');
+  const list = h('ul', { class: 'audit-list' });
+  for (const { issue, index } of issues.slice(0, 8)) {
+    const fix = h('button', { class: 'icon-btn audit-fix', textContent: 'Fix', title: 'Apply the automatic fix' });
+    fix.addEventListener('click', () => A.fixAuditIssue(issue.sid, index));
+    list.append(h('li', {}, h('span', { class: 'audit-dot' }), h('span', { class: 'audit-text' }, h('strong', { textContent: AUDIT_LABEL[issue.kind] }), h('span', { textContent: issue.message })), fix));
+  }
+  if (issues.length > 8) list.append(h('li', { class: 'd-hint', textContent: `+ ${issues.length - 8} more` }));
+  const all = h('button', { class: 'secondary-btn', textContent: `Fix all (${issues.length})` });
+  all.addEventListener('click', () => A.fixAllAudit([...new Set(issues.map((x) => x.issue.sid))]));
+  return section(`Audit · ${issues.length}`, list, all);
 }
 
 // Union / Subtract / Intersect / Exclude (non-destructive, like Figma).

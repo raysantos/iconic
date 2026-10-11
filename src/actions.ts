@@ -1,5 +1,6 @@
 // Editing commands shared by keyboard shortcuts, menus and panels.
 import { bbox, center, moveShape, rotate, scaleKeepingRotation, scaleShape, toBezier, unionBox, worldBox } from './geometry';
+import { auditShape } from './audit';
 import { BADGES, BADGE_BOX, resolveSource, type BadgeKey } from './components';
 import { BOOL_LABEL, ICON_STYLES, type Artboard, type BezierShape, type BoolOp, type BooleanShape, type Box, type InstanceShape, type IconStyle, type Pt, type Shape, type Style } from './model';
 import { activeArtboard, allShapes, artboardById, artboards, checkpoint, containerOf, commit, emit, inside, newArtboard, newId, nextArtboardName, savePrefs, selected, setActiveArtboard, shapes, state } from './store';
@@ -684,6 +685,30 @@ export function generateVariants(baseIds: string[], keys: BadgeKey[], circle: bo
     if (made.length) setActiveArtboard(made[0].id, true);
   });
   return made;
+}
+
+// ---- Audit fixes ------------------------------------------------------------
+
+export function fixAuditIssue(sid: string, index: number) {
+  const s = byIdAll(sid);
+  if (!s || s.type !== 'bezier') return;
+  const issue = auditShape(s)[index];
+  if (issue) edit(() => issue.fix(s));
+}
+
+// Fix everything, re-checking after each fix (some fixes add or remove points).
+export function fixAllAudit(sids: string[]) {
+  edit(() => {
+    for (const sid of sids) {
+      const s = byIdAll(sid);
+      if (!s || s.type !== 'bezier') continue;
+      for (let guard = 0; guard < 100; guard++) {
+        const next = auditShape(s)[0];
+        if (!next) break;
+        next.fix(s);
+      }
+    }
+  });
 }
 
 // ---- Material icon style ------------------------------------------------

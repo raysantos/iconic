@@ -12,6 +12,7 @@ interface Prefs {
   keylines: boolean; // Material icon template overlay
   smartGuides: boolean; // Ctrl+U
   powerNudge: boolean; // moving points keeps neighbouring curves in proportion
+  audit: boolean; // flag geometry problems on the canvas
   gridSize: number; // major grid spacing in px (1 = pixel grid only)
   snapTo: 'half' | 'pixel' | 'grid';
   abColumns: number; // artboard grid layout
@@ -34,6 +35,7 @@ const DEFAULT_PREFS: Prefs = {
   keylines: true,
   smartGuides: true,
   powerNudge: true,
+  audit: true,
   gridSize: 1,
   snapTo: 'pixel',
   abColumns: 4,
