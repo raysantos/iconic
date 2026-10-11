@@ -2,7 +2,9 @@
 
 **Live app:** https://raysantos.github.io/iconic/
 
-A vector editor for designing **Google Material icons**, on PC and phone. Figma-style interface, Adobe Illustrator keyboard shortcuts. It's a Progressive Web App (PWA): open it in a browser, then "Install" (desktop Chrome/Edge) or "Add to Home Screen" (iOS Safari / Android Chrome) to use it like a native app, including offline.
+**An icon editing tool with a familiar look and feel and the precision of font-editing tools.**
+
+Iconic is made for designing **Google Material icons**, on PC and phone. It has a Figma-style interface, Adobe Illustrator keyboard shortcuts and type-design tools inspired by FontLab. It's a Progressive Web App (PWA): open it in a browser, then "Install" (desktop Chrome/Edge) or "Add to Home Screen" (iOS Safari / Android Chrome) to use it like a native app, including offline.
 
 ## Material icons
 
