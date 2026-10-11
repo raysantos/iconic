@@ -1,7 +1,7 @@
 // Editing commands shared by keyboard shortcuts, menus and panels.
-import { bbox, center, moveShape, rotate, scaleKeepingRotation, scaleShape, unionBox, worldBox } from './geometry';
+import { bbox, center, moveShape, rotate, scaleKeepingRotation, scaleShape, toBezier, unionBox, worldBox } from './geometry';
 import { BADGES, BADGE_BOX, resolveSource, type BadgeKey } from './components';
-import { BOOL_LABEL, ICON_STYLES, type Artboard, type BoolOp, type BooleanShape, type Box, type InstanceShape, type IconStyle, type Pt, type Shape, type Style } from './model';
+import { BOOL_LABEL, ICON_STYLES, type Artboard, type BezierShape, type BoolOp, type BooleanShape, type Box, type InstanceShape, type IconStyle, type Pt, type Shape, type Style } from './model';
 import { activeArtboard, allShapes, artboardById, artboards, checkpoint, containerOf, commit, emit, inside, newArtboard, newId, nextArtboardName, savePrefs, selected, setActiveArtboard, shapes, state } from './store';
 import { exportSvgString } from './svg';
 
@@ -706,10 +706,43 @@ export function setIconStyle(style: IconStyle) {
   });
 }
 
+// A sharp point (no handles, not the end of an open path) can take a Smart Corner.
+export const isCorner = (s: BezierShape, i: number) => !s.nodes[i].in && !s.nodes[i].out && (s.closed || (i > 0 && i < s.nodes.length - 1));
+
+// Any shape as an editable path, in place (rotation baked in).
+function asBezier(id: string): BezierShape | null {
+  const s = byIdAll(id);
+  if (!s) return null;
+  if (s.type === 'bezier' && !s.rotation) return s;
+  if (s.type === 'boolean' || s.type === 'instance') return null;
+  const b = toBezier(s);
+  const c = containerOf(id);
+  if (c) c.list[c.list.indexOf(s)] = b;
+  return b;
+}
+const byIdAll = (id: string) => allShapes().find((s) => s.id === id);
+
+// Corner radius: picked points (Direct Selection), every sharp point of the
+// selected paths, or rectangles' corners.
 export function setCornerRadius(r: number, opts: EditOpts = {}) {
-  const rects = editable().filter((s) => s.type === 'rect');
-  if (!rects.length || !Number.isFinite(r)) return;
-  edit(() => rects.forEach((s) => s.type === 'rect' && (s.r = Math.max(0, r))), opts);
+  if (!Number.isFinite(r)) return;
+  const radius = Math.max(0, r);
+  if (state.tool === 'direct' && state.anchors.length) {
+    return edit(() => {
+      for (const a of state.anchors) {
+        const s = asBezier(a.sid);
+        if (s && isCorner(s, a.i)) s.nodes[a.i].radius = radius;
+      }
+    }, opts);
+  }
+  const list = editable().filter((s) => s.type === 'rect' || s.type === 'bezier');
+  if (!list.length) return;
+  edit(() => {
+    for (const s of list) {
+      if (s.type === 'rect') s.r = radius;
+      else if (s.type === 'bezier') s.nodes.forEach((n, i) => isCorner(s, i) && (n.radius = radius));
+    }
+  }, opts);
 }
 
 // ---- Document ----------------------------------------------------------

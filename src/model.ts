@@ -47,6 +47,7 @@ export interface BNode {
   in?: Pt;
   out?: Pt;
   smooth?: boolean; // handles stay collinear when one is dragged
+  radius?: number; // Smart Corner: live rounding of a sharp point
 }
 
 export type Shape =

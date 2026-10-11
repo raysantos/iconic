@@ -128,7 +128,43 @@ export function segments(nodes: BNode[], closed: boolean): [Pt, Pt, Pt, Pt][] {
   return segs;
 }
 
-export function bezierToPath(nodes: BNode[], closed: boolean) {
+// Smart Corners: replace each rounded sharp point with two points joined by a
+// circular arc of the given radius (clamped so neighbouring corners fit).
+export function expandCorners(nodes: BNode[], closed: boolean): BNode[] {
+  if (!nodes.some((n) => n.radius)) return nodes;
+  const out: BNode[] = [];
+  const n = nodes.length;
+  nodes.forEach((node, i) => {
+    const isEnd = !closed && (i === 0 || i === n - 1);
+    if (!node.radius || node.in || node.out || isEnd || n < 3) return void out.push(node);
+    const prev = nodes[(i - 1 + n) % n];
+    const next = nodes[(i + 1) % n];
+    // Directions leaving the corner along each neighbouring segment.
+    const v1 = unitOf(sub(prev.out ?? prev.p, node.p));
+    const v2 = unitOf(sub(next.in ?? next.p, node.p));
+    const cos = Math.max(-1, Math.min(1, v1[0] * v2[0] + v1[1] * v2[1]));
+    const theta = Math.acos(cos); // angle between the legs
+    if (theta < 1e-3 || Math.PI - theta < 1e-3) return void out.push(node); // no real corner
+    const leg = Math.min(dist(prev.p, node.p), dist(next.p, node.p)) / 2;
+    const t = Math.min(node.radius / Math.tan(theta / 2), leg); // distance from corner to arc ends
+    const r = t * Math.tan(theta / 2);
+    const h = (4 / 3) * Math.tan((Math.PI - theta) / 4) * r; // cubic arc handle length
+    const p1: Pt = [node.p[0] + v1[0] * t, node.p[1] + v1[1] * t];
+    const p2: Pt = [node.p[0] + v2[0] * t, node.p[1] + v2[1] * t];
+    out.push({ p: p1, out: [p1[0] - v1[0] * h, p1[1] - v1[1] * h] }, { p: p2, in: [p2[0] - v2[0] * h, p2[1] - v2[1] * h] });
+  });
+  return out;
+}
+
+const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
+const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const unitOf = (v: Pt): Pt => {
+  const l = Math.hypot(v[0], v[1]) || 1;
+  return [v[0] / l, v[1] / l];
+};
+
+export function bezierToPath(raw: BNode[], closed: boolean) {
+  const nodes = expandCorners(raw, closed);
   if (!nodes.length) return '';
   const f = ([x, y]: Pt) => `${round(x)} ${round(y)}`;
   let d = `M${f(nodes[0].p)}`;
@@ -144,7 +180,8 @@ export function pointsToPath(pts: Pt[]) {
 }
 
 // Exact bounds: anchor points plus each segment's extrema (where dx/dt or dy/dt = 0).
-export function bezierBox(nodes: BNode[], closed: boolean): Box {
+export function bezierBox(raw: BNode[], closed: boolean): Box {
+  const nodes = expandCorners(raw, closed);
   const pts: Pt[] = nodes.map((n) => n.p);
   for (const [a, b, c, d] of segments(nodes, closed)) {
     for (const axis of [0, 1]) {

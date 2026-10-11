@@ -6,6 +6,7 @@ import { openColorPicker } from './colorpicker';
 import { BADGES, instanceName, resolveSource, type BadgeKey } from './components';
 import { renderShapes } from './svg';
 import { icon } from './icons';
+import { toBezier } from './geometry';
 import { BOOL_LABEL, GENERAL_SIZES, ICON_SIZES, TYPE_LABEL, type BoolOp, type Cap, type InstanceShape, type IconStyle, type Join, type Shape, type Tool } from './model';
 import { installShortcuts, keyFor, pretty, SHORTCUTS } from './shortcuts';
 import { activeArtboard, allShapes, artboardById, artboards, byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, setActiveArtboard, shapes, state, subscribe, undo } from './store';
@@ -731,12 +732,24 @@ function layoutSection(sel: Shape[]) {
 
 // Corner radius, shown when every selected shape is a rectangle.
 function radiusField(sel: Shape[]): Node {
-  const rects = sel.filter((s) => s.type === 'rect');
-  if (!rects.length || rects.length !== sel.length) return h('span');
-  const values = [...new Set(rects.map((s) => (s.type === 'rect' ? (s.r ?? 0) : 0)))];
+  let values: number[];
+  if (state.tool === 'direct' && state.anchors.length) {
+    // Smart Corners on the picked points.
+    values = state.anchors.flatMap((a) => {
+      const s = byId(a.sid);
+      if (!s || s.type === 'boolean' || s.type === 'instance') return [];
+      const b = s.type === 'bezier' ? s : toBezier(s);
+      return A.isCorner(b, a.i) ? [b.nodes[a.i].radius ?? 0] : [];
+    });
+  } else {
+    if (!sel.length || !sel.every((s) => s.type === 'rect' || s.type === 'bezier')) return h('span');
+    values = sel.flatMap((s) => (s.type === 'rect' ? [s.r ?? 0] : s.type === 'bezier' ? s.nodes.filter((_, i) => A.isCorner(s, i)).map((n) => n.radius ?? 0) : []));
+  }
+  if (!values.length) return h('span');
+  values = [...new Set(values)];
   return numField({
     label: 'R',
-    title: 'Corner radius (Material: 2dp)',
+    title: 'Corner radius — Smart Corners on paths (Material: 2dp)',
     value: values.length > 1 ? null : values[0],
     field: 'r',
     min: 0,
