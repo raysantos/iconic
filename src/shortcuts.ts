@@ -67,7 +67,13 @@ export const SHORTCUTS: Shortcut[] = [
   { group: 'Object', label: 'Intersect', keys: ['Ctrl+Alt+I'], run: () => bool('intersect') },
   { group: 'Object', label: 'Exclude', keys: ['Ctrl+Alt+X'], run: () => bool('exclude') },
   { group: 'Object', label: 'Release Boolean Group', keys: ['Ctrl+Shift+G'], run: () => void A.releaseBoolean() },
-  { group: 'Object', label: 'Create Component (artboard)', keys: ['Ctrl+Alt+K'], run: () => {
+  { group: 'Object', label: 'Create Component', keys: ['Ctrl+Alt+K'], run: () => {
+    // With shapes selected: make them a reusable element; otherwise toggle the artboard.
+    if (state.selection.length) {
+      const made = A.componentFromSelection();
+      hooks.toast(made ? `Created component ${made.name} — place it from Assets` : 'Select top-level shapes to make a component');
+      return;
+    }
     const ab = activeArtboard();
     A.setComponent(ab.id, !ab.component);
     hooks.toast(ab.component ? `${ab.name} is now a component` : `${ab.name} is no longer a component`);

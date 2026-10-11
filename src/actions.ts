@@ -519,6 +519,36 @@ export function arrangeArtboards(columns = state.prefs.abColumns, gap = state.pr
 
 // ---- Components & badges ------------------------------------------------------
 
+// Elements: turn the selected shapes into a reusable component. They move to a
+// new component artboard and a linked instance takes their place.
+export function componentFromSelection(): Artboard | null {
+  const sel = editable();
+  if (!sel.length) return null;
+  const list = shapes();
+  const top = sel.filter((s) => list.includes(s)); // top level only
+  if (top.length !== sel.length) return null;
+  const b = unionBox(top.map(worldBox));
+  const [x0, y0] = [Math.floor(b.x), Math.floor(b.y)];
+  const [w, h] = [Math.max(1, Math.ceil(b.x + b.w) - x0), Math.max(1, Math.ceil(b.y + b.h) - y0)];
+  const [ax, ay] = freeSlot(w, h);
+  const name = top.length === 1 && top[0].name ? top[0].name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'element' : 'element';
+  const ab: Artboard = { ...newArtboard(name, ax, ay, w), h, component: true };
+  edit(() => {
+    const at = Math.max(...top.map((s) => list.indexOf(s)));
+    const inst = newInstance(ab.id, x0, y0, 1);
+    list.splice(at + 1, 0, inst);
+    for (const s of top) {
+      list.splice(list.indexOf(s), 1);
+      moveShape(s, structuredClone(s), ax - x0, ay - y0);
+    }
+    list.push(...top);
+    artboards().push(ab);
+    inst.name = ab.name;
+    state.selection = [inst.id];
+  });
+  return ab;
+}
+
 export function setComponent(id: string, on: boolean) {
   const ab = artboardById(id);
   if (!ab || !!ab.component === on) return;

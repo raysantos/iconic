@@ -524,7 +524,7 @@ function renderDesign() {
   pendingDesign = false;
   const sel = selected();
   designBody.replaceChildren(
-    ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel), auditSection(sel)] : [artboardSection(), materialSection(), gridSection()]),
+    ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel), elementSection(sel), auditSection(sel)] : [artboardSection(), materialSection(), gridSection()]),
     fillSection(sel),
     strokeSection(sel),
     section('Export', exportControls()),
@@ -669,6 +669,17 @@ function toggleRow(label: string, keys: string, on: boolean, run: () => void) {
   const input = h('input', { type: 'checkbox', checked: on, class: 'switch' });
   input.addEventListener('change', run);
   return h('label', { class: 'd-row toggle', title: pretty(keys) }, h('span', { class: 'd-label', textContent: label }), input);
+}
+
+// Elements: make the selection a reusable component.
+function elementSection(sel: Shape[]): Node {
+  if (sel.some((s) => s.type === 'instance') || !sel.every((s) => shapes().includes(s))) return h('span');
+  const b = h('button', { class: 'secondary-btn', textContent: 'Create component', title: `Reuse this across icons (${pretty('Ctrl+Alt+K')})` });
+  b.addEventListener('click', () => {
+    const made = A.componentFromSelection();
+    if (made) toast(`Created component ${made.name} — place it from Assets`);
+  });
+  return h('section', { class: 'd-section' }, b);
 }
 
 // Geometry problems in the selected paths, each with a fix.
