@@ -4,6 +4,7 @@ import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange,
 import { checkSinglePath, DENSITIES, exportArtboards, fileBase, type ExportFormat, type ExportIssue } from './export';
 import { AUDIT_LABEL, auditShape } from './audit';
 import { openColorPicker } from './colorpicker';
+import { exportIconFont } from './fontexport';
 import { toggleOverview } from './overview';
 import { BADGES, instanceName, resolveSource, type BadgeKey } from './components';
 import { renderShapes } from './svg';
@@ -1055,12 +1056,15 @@ function exportControls() {
           ['svg', 'SVG', 'Web / Material Symbols SVG'],
           ['xml', 'Android', 'Android Vector Drawable (.xml)'],
           ['png', 'PNG', 'PNG at Android densities'],
+          ['font', 'Font', 'Icon font (OTF + WOFF) with ligatures and codepoints'],
         ],
         p.exportFormat,
         (v) => set('exportFormat', v),
       ),
     );
-    if (p.exportFormat === 'png') {
+    if (p.exportFormat === 'font') {
+      kids.push(h('p', { class: 'd-hint', textContent: 'One glyph per icon: type its name (ligature) or use its codepoint. Includes CSS, a codepoints file and a demo page.' }));
+    } else if (p.exportFormat === 'png') {
       const chips = h('div', { class: 'chips' });
       const ab = activeArtboard();
       for (const d of DENSITIES) {
@@ -1081,17 +1085,18 @@ function exportControls() {
     const boards = p.exportAll ? artboards() : [activeArtboard()];
     const ext = p.exportFormat;
     const single = boards.length === 1 && (p.exportFormat !== 'png' || p.densities.length === 1);
-    const label = single ? `Export ${fileBase(boards[0])}.${ext}` : `Export ${boards.length > 1 ? `${boards.length} icons` : fileBase(boards[0])} (.zip)`;
+    const label = p.exportFormat === 'font' ? `Export icon font · ${boards.length} glyph${boards.length > 1 ? 's' : ''} (.zip)` : single ? `Export ${fileBase(boards[0])}.${ext}` : `Export ${boards.length > 1 ? `${boards.length} icons` : fileBase(boards[0])} (.zip)`;
     const go = h('button', { class: 'primary-btn', textContent: label });
     go.addEventListener('click', async () => {
       const opts = { format: p.exportFormat, densities: p.densities, currentColor: p.currentColor, singlePath: p.singlePath, grid960: p.grid960 };
-      if (p.singlePath && p.exportFormat !== 'png') {
+      if ((p.singlePath && p.exportFormat !== 'png') || p.exportFormat === 'font') {
         go.textContent = 'Checking…';
         const issues = await checkSinglePath(state.doc, boards);
         go.textContent = label;
         if (issues.length && !(await reviewIssues(issues))) return;
       }
       closePop();
+      if (p.exportFormat === 'font') return exportIconFont(state.doc, boards);
       await exportArtboards(state.doc, boards, opts);
     });
     kids.push(go);

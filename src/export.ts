@@ -7,7 +7,7 @@ import { flattenArtboard, geometryPath, hasPathOps, shapeAreaPath, transformPath
 import { state } from './store';
 import { exportSvgString } from './svg';
 
-export type ExportFormat = 'svg' | 'xml' | 'png';
+export type ExportFormat = 'svg' | 'xml' | 'png' | 'font';
 
 // Android density buckets (1x = mdpi).
 export const DENSITIES: { name: string; scale: number }[] = [
