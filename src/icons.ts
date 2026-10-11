@@ -41,9 +41,10 @@ const P: Record<string, string> = {
   exclude: '<path d="M4 4h10v6h-4v4H4zM14 10h6v10H10v-6h4z" fill="currentColor" stroke="none"/><rect x="10" y="10" width="4" height="4"/>',
   component: '<path d="M12 2.8 15.2 6 12 9.2 8.8 6zM6 8.8 9.2 12 6 15.2 2.8 12zM18 8.8 21.2 12 18 15.2 14.8 12zM12 14.8 15.2 18 12 21.2 8.8 18z"/>',
   // Material styles: a corner drawn as an outline, rounded, and sharp.
-  styleOutlined: '<path d="M5 20V9a4 4 0 0 1 4-4h11" stroke-width="2.4"/>',
-  styleRounded: '<path d="M6 19V10a4 4 0 0 1 4-4h9" stroke-width="5"/>',
-  styleSharp: '<path d="M6.5 20V6.5H20" stroke-width="5" stroke-linecap="butt" stroke-linejoin="miter"/>',
+  // Same stroke weight; only the corner and line ends differ.
+  styleOutlined: '<path d="M6 20V10a4 4 0 0 1 4-4h10" stroke-width="3" stroke-linecap="butt"/>',
+  styleRounded: '<path d="M6 19v-6a7 7 0 0 1 7-7h6" stroke-width="3" stroke-linecap="round"/>',
+  styleSharp: '<path d="M6 20V6h14" stroke-width="3" stroke-linecap="butt" stroke-linejoin="miter"/>',
   // Stroke corners (joins): sharp, rounded, cut off by a line.
   joinMiter: '<path d="M4 20V4h16v5H9v11z" fill="currentColor" stroke="none"/>',
   joinRound: '<path d="M4 20v-8a8 8 0 0 1 8-8h8v5h-8a3 3 0 0 0-3 3v8z" fill="currentColor" stroke="none"/>',
