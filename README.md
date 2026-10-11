@@ -16,6 +16,13 @@ A vector editor for designing **Google Material icons**, on PC and phone. Figma-
 - **Merged preview** (`Ctrl+Y`): see every icon exactly as it will export, while still editing the shapes
 - **Formats:** SVG (optional `currentColor`), **Android Vector Drawable** XML (optional `colorControlNormal` tint), PNG at Android densities (mdpi–xxxhdpi, zipped into `drawable-*` folders); one artboard or all of them
 
+## Components, badges & variants (modifier icons)
+
+- **Components** (`Ctrl+Alt+K`): turn any artboard into a reusable component and place linked **instances** of it in other icons (Assets tab). Edit the component once and every instance updates; double-click an instance to jump to its component; **Detach** (`Ctrl+Alt+B`) turns it into editable shapes
+- **Badges:** plus, minus, check, close, alert, up, down — **bare** or in a **circle** — dropped into the icon's corner slot, sized for the 24dp grid and colored to match the icon
+- **Knockout gap:** a badge cuts clearance (default 1.5dp, adjustable) out of everything beneath it, following the badge's exact shape — live on the canvas and exact in the single-path export
+- **Make variants:** pick base icons and badges; Iconic creates every combination as linked artboards named Material-style (`file_add`, `file_remove_circle`, …)
+
 ## Boolean groups (non-destructive)
 
 - **Union, Subtract, Intersect, Exclude** (`Ctrl+Alt+U / S / I / X`) create a live boolean group: the shapes inside stay fully editable and the result updates as you change them

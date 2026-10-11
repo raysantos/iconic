@@ -54,10 +54,14 @@ export type Shape =
   | (Base & { type: 'path'; points: Pt[] }) // freehand
   | (Base & { type: 'bezier'; nodes: BNode[]; closed: boolean })
   // Non-destructive boolean group: children stay editable, the result is live.
-  | (Base & { type: 'boolean'; op: BoolOp; children: Shape[] });
+  | (Base & { type: 'boolean'; op: BoolOp; children: Shape[] })
+  // A linked copy of a component artboard (or a built-in badge). `knockout` > 0
+  // cuts that much clearance out of everything below it on its artboard.
+  | (Base & { type: 'instance'; ref: string; x: number; y: number; scale: number; knockout?: number });
 
 export type BezierShape = Extract<Shape, { type: 'bezier' }>;
 export type BooleanShape = Extract<Shape, { type: 'boolean' }>;
+export type InstanceShape = Extract<Shape, { type: 'instance' }>;
 
 export type BoolOp = 'union' | 'subtract' | 'intersect' | 'exclude';
 export const BOOL_LABEL: Record<BoolOp, string> = { union: 'Union', subtract: 'Subtract', intersect: 'Intersect', exclude: 'Exclude' };
@@ -70,6 +74,7 @@ export interface Artboard {
   y: number;
   w: number;
   h: number;
+  component?: boolean; // can be placed in other icons as a linked instance
 }
 
 export interface Doc {
@@ -103,4 +108,5 @@ export const TYPE_LABEL: Record<Shape['type'], string> = {
   path: 'Pencil',
   bezier: 'Path',
   boolean: 'Boolean',
+  instance: 'Instance',
 };

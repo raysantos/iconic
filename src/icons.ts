@@ -39,6 +39,7 @@ const P: Record<string, string> = {
   subtract: '<path d="M4 4h10v6h-4v4H4z" fill="currentColor" stroke="none"/><rect x="10" y="10" width="10" height="10" stroke-dasharray="2 2"/>',
   intersect: '<rect x="4" y="4" width="10" height="10"/><rect x="10" y="10" width="10" height="10"/><rect x="10" y="10" width="4" height="4" fill="currentColor" stroke="none"/>',
   exclude: '<path d="M4 4h10v6h-4v4H4zM14 10h6v10H10v-6h4z" fill="currentColor" stroke="none"/><rect x="10" y="10" width="4" height="4"/>',
+  component: '<path d="M12 2.8 15.2 6 12 9.2 8.8 6zM6 8.8 9.2 12 6 15.2 2.8 12zM18 8.8 21.2 12 18 15.2 14.8 12zM12 14.8 15.2 18 12 21.2 8.8 18z"/>',
   keyboard: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
 };
 

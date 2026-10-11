@@ -3,10 +3,12 @@ import * as A from './actions';
 import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setCursor, setHover, viewState, zoomAt, zoomTo } from './canvas';
 import { checkSinglePath, DENSITIES, exportArtboards, fileBase, type ExportFormat, type ExportIssue } from './export';
 import { openColorPicker } from './colorpicker';
+import { BADGES, instanceName, resolveSource, type BadgeKey } from './components';
+import { renderShapes } from './svg';
 import { icon } from './icons';
-import { BOOL_LABEL, ICON_SIZES, TYPE_LABEL, type BoolOp, type Cap, type IconStyle, type Join, type Shape, type Tool } from './model';
+import { BOOL_LABEL, ICON_SIZES, TYPE_LABEL, type BoolOp, type Cap, type InstanceShape, type IconStyle, type Join, type Shape, type Tool } from './model';
 import { installShortcuts, keyFor, pretty, SHORTCUTS } from './shortcuts';
-import { activeArtboard, allShapes, artboards, byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, setActiveArtboard, shapes, state, subscribe, undo } from './store';
+import { activeArtboard, allShapes, artboardById, artboards, byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, setActiveArtboard, shapes, state, subscribe, undo } from './store';
 
 const q = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
 
@@ -248,15 +250,39 @@ function openExport() {
 
 const left = q('#leftPanel');
 left.innerHTML = `
-  <div class="panel-header"><span class="panel-title">Artboards</span>
-    <span class="header-actions">
-      <button class="icon-btn" data-ab-act="add" title="New artboard (next grid cell)">${icon('plus', 14)}</button>
-      <button class="sheet-close" data-close="left" aria-label="Close">×</button>
-    </span>
+  <div class="panel-header tabs" role="tablist">
+    <button role="tab" class="tab on" data-tab="layers" aria-selected="true">Layers</button>
+    <button role="tab" class="tab" data-tab="assets" aria-selected="false">Assets</button>
+    <button class="sheet-close" data-close="left" aria-label="Close">×</button>
   </div>
-  <ul class="ab-list" aria-label="Artboards"></ul>
-  <div class="panel-header sub"><span class="panel-title">Layers</span></div>
-  <ul class="layer-list" role="tree" aria-label="Layers"></ul>`;
+  <div class="tab-body" data-body="layers">
+    <div class="panel-header sub first"><span class="panel-title">Artboards</span>
+      <button class="icon-btn" data-ab-act="add" title="New artboard (next grid cell)">${icon('plus', 14)}</button>
+    </div>
+    <ul class="ab-list" aria-label="Artboards"></ul>
+    <div class="panel-header sub"><span class="panel-title">Layers</span></div>
+    <ul class="layer-list" role="tree" aria-label="Layers"></ul>
+  </div>
+  <div class="tab-body assets" data-body="assets" hidden>
+    <div class="panel-header sub first"><span class="panel-title">Components</span></div>
+    <div class="asset-grid comp-grid"></div>
+    <div class="panel-header sub"><span class="panel-title">Badges</span><span class="badge-style"></span></div>
+    <div class="asset-grid badge-grid"></div>
+    <p class="d-hint asset-hint">Click a badge to add it to the corner of the current icon, with a knockout gap.</p>
+    <div class="asset-actions"><button class="secondary-btn" data-variants>Make variants…</button></div>
+  </div>`;
+
+left.querySelectorAll<HTMLElement>('[data-tab]').forEach((t) =>
+  t.addEventListener('click', () => {
+    for (const x of left.querySelectorAll<HTMLElement>('[data-tab]')) {
+      const on = x === t;
+      x.classList.toggle('on', on);
+      x.setAttribute('aria-selected', String(on));
+    }
+    for (const b of left.querySelectorAll<HTMLElement>('[data-body]')) b.hidden = b.dataset.body !== t.dataset.tab;
+    renderAssets();
+  }),
+);
 const layerList = q<HTMLUListElement>('.layer-list', left);
 const abList = q<HTMLUListElement>('.ab-list', left);
 
@@ -269,7 +295,7 @@ function renderArtboards() {
       const on = ab.id === state.activeArtboard;
       const cls = ['layer-row ab-row', on && 'active', on && state.artboardSelected && 'selected'].filter(Boolean).join(' ');
       return `<li class="${cls}" data-ab="${ab.id}">
-        <span class="layer-icon">${icon('artboard', 14)}</span>
+        <span class="layer-icon${ab.component ? ' is-component' : ''}">${icon(ab.component ? 'component' : 'artboard', 14)}</span>
         <span class="layer-name">${escapeHtml(ab.name)}</span>
         <span class="ab-size">${ab.w}×${ab.h}</span>
         <button class="row-btn" data-ab-act="dup" title="Duplicate artboard with artwork">${icon('copy', 14)}</button>
@@ -316,7 +342,7 @@ abList.addEventListener('dblclick', (e) => {
 });
 let renamingId: string | null = null;
 
-const TYPE_ICON: Record<Shape['type'], string> = { rect: 'rect', ellipse: 'ellipse', line: 'line', path: 'pencil', bezier: 'path', boolean: 'union' };
+const TYPE_ICON: Record<Shape['type'], string> = { rect: 'rect', ellipse: 'ellipse', line: 'line', path: 'pencil', bezier: 'path', boolean: 'union', instance: 'component' };
 
 function renderLayers() {
   if (renamingId) return; // don't steal focus from the rename field
@@ -489,7 +515,7 @@ function renderDesign() {
   pendingDesign = false;
   const sel = selected();
   designBody.replaceChildren(
-    ...(sel.length ? [alignSection(), booleanSection(sel), layoutSection(sel)] : [artboardSection(), materialSection(), gridSection()]),
+    ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel)] : [artboardSection(), materialSection(), gridSection()]),
     fillSection(sel),
     strokeSection(sel),
     section('Export', exportControls()),
@@ -549,6 +575,7 @@ function artboardSection() {
     name,
     h('div', { class: 'd-grid' }, field('X', 'x'), field('Y', 'y'), field('W', 'w', 1), field('H', 'h', 1)),
     labeled('Icon size', sizes, 'Material Symbols optical sizes; scales the artwork'),
+    toggleRow('Component', 'Ctrl+Alt+K', !!ab.component, () => A.setComponent(ab.id, !ab.component)),
     h('h4', { class: 'd-subtitle', textContent: 'Artboard grid' }),
     h('div', { class: 'd-grid' }, cols, gap),
     arrange,
@@ -1037,6 +1064,221 @@ function reviewIssues(issues: ExportIssue[]): Promise<boolean> {
   });
 }
 
+// ---- Assets: components and badges ---------------------------------------------
+
+let badgeCircle = false;
+
+// A small live preview of a component or badge.
+function thumb(ref: string): SVGSVGElement {
+  const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const src = resolveSource(ref);
+  if (src) {
+    const b = src.box;
+    const pad = Math.max(b.w, b.h) * 0.08;
+    svgEl.setAttribute('viewBox', `${b.x - pad} ${b.y - pad} ${b.w + 2 * pad} ${b.h + 2 * pad}`);
+    svgEl.append(...renderShapes(src.shapes));
+  }
+  svgEl.setAttribute('class', 'asset-thumb');
+  svgEl.setAttribute('aria-hidden', 'true');
+  return svgEl;
+}
+
+function renderAssets() {
+  const body = q<HTMLElement>('[data-body="assets"]', left);
+  if (body.hidden) return;
+  const comps = artboards().filter((a) => a.component);
+  const cg = q('.comp-grid', body);
+  cg.replaceChildren(
+    ...(comps.length
+      ? comps.map((a) => {
+          const b = h('button', { class: 'asset-tile', title: `Place ${a.name} in the current icon` }, thumb(a.id), h('span', { textContent: a.name }));
+          b.addEventListener('click', () => {
+            if (!A.placeComponent(a.id)) toast('Pick a different artboard first — a component can’t contain itself');
+          });
+          return b;
+        })
+      : [h('p', { class: 'd-hint', textContent: `Turn an artboard into a component (Design panel or ${pretty('Ctrl+Alt+K')}) to reuse it in other icons.` })]),
+  );
+  q('.badge-style', body).replaceChildren(
+    segmented<string>(
+      [
+        ['bare', 'Bare'],
+        ['circle', 'Circle'],
+      ],
+      badgeCircle ? 'circle' : 'bare',
+      (v) => {
+        badgeCircle = v === 'circle';
+        renderAssets();
+      },
+    ),
+  );
+  q('.badge-grid', body).replaceChildren(
+    ...BADGES.map((bd) => {
+      const ref = `badge:${bd.key}${badgeCircle ? '_circle' : ''}`;
+      const b = h('button', { class: 'asset-tile badge', title: `${bd.label} badge` }, thumb(ref), h('span', { textContent: bd.label }));
+      b.addEventListener('click', () => {
+        // With a badge selected, swap it; otherwise add one to the active icon.
+        const sel = selected();
+        if (sel.length && sel.every((x) => x.type === 'instance' && x.ref.startsWith('badge:'))) A.swapBadge(bd.key, badgeCircle);
+        else A.placeBadge(bd.key, badgeCircle);
+      });
+      return b;
+    }),
+  );
+}
+
+left.addEventListener('click', (e) => {
+  if ((e.target as Element).closest('[data-variants]')) openVariants();
+});
+
+// ---- Instance section (Design panel) ----------------------------------------------
+
+function instanceSection(sel: Shape[]): Node {
+  const insts = sel.filter((s): s is InstanceShape => s.type === 'instance');
+  if (!insts.length || insts.length !== sel.length) return h('span');
+  const one = insts.length === 1 ? insts[0] : null;
+  const isBadge = insts.every((i) => i.ref.startsWith('badge:'));
+  const kids: Node[] = [];
+  if (one) kids.push(h('p', { class: 'd-hint inst-source', textContent: `${isBadge ? 'Badge' : 'Component'}: ${instanceName(one)}` }));
+
+  const gaps = [...new Set(insts.map((i) => i.knockout ?? 0))];
+  kids.push(
+    h(
+      'div',
+      { class: 'd-grid' },
+      numField({
+        label: 'Gap',
+        title: 'Knockout: clearance cut from the icon around this (0 = off)',
+        value: gaps.length > 1 ? null : gaps[0],
+        min: 0,
+        step: 0.25,
+        wide: true,
+        onCommit: (v) => A.setKnockout(v),
+        onScrub: (v) => A.setKnockout(v, { live: true }),
+      }),
+    ),
+  );
+
+  const corners = h('div', { class: 'corner-row' });
+  for (const [c, label, sym] of [
+    ['nw', 'Top left', '↖'],
+    ['ne', 'Top right', '↗'],
+    ['sw', 'Bottom left', '↙'],
+    ['se', 'Bottom right', '↘'],
+  ] as const) {
+    const b = h('button', { class: 'icon-btn', textContent: sym, title: `Move to ${label.toLowerCase()} corner` });
+    b.addEventListener('click', () => A.moveBadgeTo(c));
+    corners.append(b);
+  }
+  kids.push(labeled('Corner', corners));
+
+  if (isBadge) {
+    const circle = insts.every((i) => i.ref.endsWith('_circle'));
+    const key = insts[0].ref.slice(6).split('_')[0] as BadgeKey;
+    kids.push(
+      labeled(
+        'Style',
+        segmented<string>(
+          [
+            ['bare', 'Bare'],
+            ['circle', 'Circle'],
+          ],
+          circle ? 'circle' : 'bare',
+          (v) => A.swapBadge(key, v === 'circle'),
+        ),
+      ),
+    );
+  }
+
+  const actions = h('div', { class: 'btn-row' });
+  if (one && !isBadge && artboardById(one.ref)) {
+    const go = h('button', { class: 'secondary-btn', textContent: 'Go to component' });
+    go.addEventListener('click', () => {
+      setActiveArtboard(one.ref, true);
+      emit();
+      fitArtboard();
+    });
+    actions.append(go);
+  }
+  const detach = h('button', { class: 'secondary-btn', textContent: 'Detach', title: `Turn into editable shapes (${pretty('Ctrl+Alt+B')})` });
+  detach.addEventListener('click', () => {
+    if (A.detachSelection()) toast('Detached — the knockout gap was removed (use Subtract to keep one)');
+  });
+  actions.append(detach);
+  kids.push(actions);
+  return section(isBadge ? 'Badge' : 'Instance', ...kids);
+}
+
+// ---- Variant generator ------------------------------------------------------------
+
+function openVariants() {
+  const dlg = q<HTMLDialogElement>('#reviewDialog');
+  const bases = new Set(artboards().filter((a) => a.component || a.id === state.activeArtboard).map((a) => a.id));
+  const keys = new Set<BadgeKey>(['plus', 'minus']);
+  let circle = badgeCircle;
+  let gap = A.BADGE_GAP;
+
+  const baseList = h('div', { class: 'pick-list' });
+  for (const a of artboards()) {
+    const cb = h('input', { type: 'checkbox', checked: bases.has(a.id) });
+    cb.addEventListener('change', () => (cb.checked ? bases.add(a.id) : bases.delete(a.id), update()));
+    baseList.append(h('label', { class: 'pick' }, cb, thumb(a.id), h('span', { textContent: a.name })));
+  }
+  const badgeList = h('div', { class: 'pick-list badges' });
+  const drawBadges = () => {
+    badgeList.replaceChildren(
+      ...BADGES.map((bd) => {
+        const cb = h('input', { type: 'checkbox', checked: keys.has(bd.key) });
+        cb.addEventListener('change', () => (cb.checked ? keys.add(bd.key) : keys.delete(bd.key), update()));
+        return h('label', { class: 'pick' }, cb, thumb(`badge:${bd.key}${circle ? '_circle' : ''}`), h('span', { textContent: `${bd.label} → _${bd.suffix}` }));
+      }),
+    );
+  };
+  drawBadges();
+  const style = segmented<string>(
+    [
+      ['bare', 'Bare'],
+      ['circle', 'Circle'],
+    ],
+    circle ? 'circle' : 'bare',
+    (v) => {
+      circle = v === 'circle';
+      style.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.textContent === (circle ? 'Circle' : 'Bare')));
+      drawBadges();
+      update();
+    },
+  );
+  const gapField = numField({ label: 'Gap', value: gap, min: 0, step: 0.25, wide: true, onCommit: (v) => (gap = v) });
+  const create = h('button', { class: 'primary-btn' });
+  const cancel = h('button', { class: 'secondary-btn', textContent: 'Cancel' });
+  function update() {
+    const n = bases.size * keys.size;
+    create.textContent = n ? `Create ${n} variant${n > 1 ? 's' : ''}` : 'Create variants';
+    create.disabled = !n;
+  }
+  update();
+  create.addEventListener('click', () => {
+    const made = A.generateVariants([...bases], [...keys], circle, gap);
+    dlg.close();
+    if (made.length) {
+      fitAll();
+      toast(`Created ${made.length} linked variant${made.length > 1 ? 's' : ''} — edit the base and they all update`);
+    }
+  });
+  cancel.addEventListener('click', () => dlg.close());
+  dlg.replaceChildren(
+    h('h2', { textContent: 'Make variants' }),
+    h('p', { class: 'd-hint', textContent: 'Each base icon gets a copy with each badge in the corner, cut out with a knockout gap. Bases become components, so the variants stay linked.' }),
+    h('h3', { class: 'd-subtitle', textContent: 'Base icons' }),
+    baseList,
+    h('div', { class: 'd-row' }, h('h3', { class: 'd-subtitle', textContent: 'Badges' }), style),
+    badgeList,
+    h('div', { class: 'd-grid gap-row' }, gapField),
+    h('div', { class: 'dialog-actions' }, cancel, create),
+  );
+  dlg.showModal();
+}
+
 // ---- Help, toast, panels -----------------------------------------------------
 
 const helpDialog = q<HTMLDialogElement>('#helpDialog');
@@ -1100,6 +1342,7 @@ export function initUI() {
     updateTopbar();
     renderArtboards();
     renderLayers();
+    renderAssets();
     renderDesign();
   });
   onViewChange(updateZoomLabel);

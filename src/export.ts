@@ -3,7 +3,7 @@
 // way Google ships Material icons; the working document stays editable.
 import { intersects, round, worldBox } from './geometry';
 import type { Artboard, Doc, Shape } from './model';
-import { flattenArtboard, geometryPath, hasPathOps, transformPath } from './pathops';
+import { flattenArtboard, geometryPath, hasPathOps, shapeAreaPath, transformPath } from './pathops';
 import { exportSvgString } from './svg';
 
 export type ExportFormat = 'svg' | 'xml' | 'png';
@@ -48,6 +48,7 @@ export const visibleOn = (shapes: Shape[], ab: Artboard) => shapes.filter((s) =>
 
 // The color a shape shows: its fill, or its stroke for outline-only shapes.
 export function paintColor(s: Shape): string | null {
+  if (s.type === 'instance') return s.fill !== 'none' ? s.fill.toUpperCase() : null; // null: keeps the component's own colors
   if (s.type !== 'line' && s.fill !== 'none') return s.fill.toUpperCase();
   return s.strokeWidth > 0 ? s.stroke.toUpperCase() : null;
 }
@@ -86,13 +87,21 @@ export function vectorDrawable(doc: Doc, ab: Artboard, opts: Pick<ExportOptions,
   const color = (c: string) => (opts.currentColor ? '@android:color/white' : c.toUpperCase());
   const shapes = visibleOn(doc.shapes, ab);
   let paths: string[];
-  const flat = opts.singlePath ? flattenArtboard(shapes, ab) : null;
+  // Android has no masks, so knockouts always export merged.
+  const knockouts = shapes.some((s) => s.type === 'instance' && (s.knockout ?? 0) > 0);
+  const flat = opts.singlePath || knockouts ? flattenArtboard(shapes, ab) : null;
   if (flat) {
     const attrs = [`android:pathData="${flat.d}"`, `android:fillColor="${color(iconColor(shapes))}"`];
     if (flat.fillRule === 'evenodd') attrs.push('android:fillType="evenOdd"');
     paths = [`  <path\n      ${attrs.join('\n      ')}/>`];
   } else {
     paths = shapes.map((s) => {
+      if (s.type === 'instance') {
+        // An instance exports as its filled outline.
+        return `  <path
+      android:pathData="${transformPath(shapeAreaPath(s), 1, -ab.x, -ab.y)}"
+      android:fillColor="${color(iconColor(shapes))}"/>`;
+      }
       const attrs = [`android:pathData="${transformPath(geometryPath(s), 1, -ab.x, -ab.y)}"`];
       if (s.type !== 'line' && s.fill !== 'none') attrs.push(`android:fillColor="${color(s.fill)}"`);
       if (s.strokeWidth > 0) {

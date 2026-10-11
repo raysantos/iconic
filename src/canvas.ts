@@ -44,7 +44,7 @@ import { paintColor, visibleOn } from './export';
 import { cubicsToNodes, fitCurve, removeAnchorSmooth, reverseNodes } from './fit';
 import { collectTargets, smartOn, snapBox, snapPoint, type Guide } from './guides';
 import { flattenArtboard, hasPathOps } from './pathops';
-import { el, setAttrs, shapeGeometry, shapeToElement } from './svg';
+import { el, renderShapes, setAttrs, shapeGeometry } from './svg';
 
 const svg = document.getElementById('canvas') as unknown as SVGSVGElement;
 const world = el('g');
@@ -206,15 +206,13 @@ export function render() {
     }
   }
 
-  for (const s of shapes()) {
-    if (s.hidden) continue;
-    const e = shapeToElement(s);
+  const drawn = renderShapes(shapes(), (e, s) => {
     e.dataset.id = s.id;
     if (s.locked) e.classList.add('locked');
     if (merged) e.classList.add('ghost');
-    world.append(e);
-    if (s.type === 'boolean' && isOpen(s)) world.append(groupInterior(s));
-  }
+  });
+  world.append(...drawn);
+  for (const s of shapes()) if (!s.hidden && s.type === 'boolean' && isOpen(s)) world.append(groupInterior(s));
 
   const overlay = el('g', {}, 'overlay');
   world.append(overlay);
@@ -971,6 +969,12 @@ svg.addEventListener('dblclick', (e) => {
   // Double-click a boolean group to select the shape inside it.
   const groupEl = (e.target as Element).closest<SVGElement>('[data-id]');
   const group = groupEl && byId(groupEl.dataset.id!);
+  // Double-click an instance to jump to its component.
+  if (group?.type === 'instance' && artboardById(group.ref)) {
+    setActiveArtboard(group.ref, true);
+    emit();
+    return fitArtboard();
+  }
   if (group?.type === 'boolean' && (state.tool === 'select' || pointTools.has(state.tool))) {
     const child = childAt(group, eventPoint(e));
     if (child) {
@@ -1044,6 +1048,7 @@ function constrain45(from: Pt, p: Pt): Pt {
 // corner stays put on screen, even for a rotated shape.
 function resize(g: Extract<Gesture, { kind: 'resize' }>, p: Pt, keepRatio: boolean, fromCenter: boolean) {
   const single = g.list.length === 1;
+  if (single && g.list[0].type === 'instance') keepRatio = true; // components keep their proportions
   const rot = single ? (g.originals[0].rotation ?? 0) : 0;
   const b = g.box0;
   const c = center(b);

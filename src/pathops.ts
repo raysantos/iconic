@@ -1,8 +1,9 @@
 // Boolean operations and outline stroke via Google's Skia PathOps (WebAssembly).
 import PathKitInit, { type PathKit, type SkPath } from 'pathkit-wasm/bin/pathkit.js';
 import wasmUrl from 'pathkit-wasm/bin/pathkit.wasm?url';
-import { bezierToPath, toBezier } from './geometry';
-import type { Box, BooleanShape, Shape } from './model';
+import { nested, resolveSource } from './components';
+import { bbox, bezierToPath, center, toBezier } from './geometry';
+import type { Box, BooleanShape, InstanceShape, Shape } from './model';
 
 let PK: PathKit | null = null;
 
@@ -43,6 +44,7 @@ function toSkPath(s: Shape): SkPath | null {
 // Shapes with neither still contribute their geometry (so they can cut holes).
 function paintedArea(s: Shape): SkPath | null {
   if (!PK || s.hidden) return null;
+  if (s.type === 'instance') return instanceArea(s);
   if (!geometryPath(s)) return null;
   const fills = s.type !== 'line' && s.fill !== 'none';
   let area = fills || s.strokeWidth <= 0 ? toSkPath(s) : null;
@@ -56,6 +58,87 @@ function paintedArea(s: Shape): SkPath | null {
   }
   return area;
 }
+
+// ---- Instances & knockouts -----------------------------------------------------
+
+// Paint a list bottom to top; a knockout instance first cuts its outline,
+// grown by its gap, out of everything below it.
+function areaOfList(list: Shape[]): SkPath | null {
+  let acc: SkPath | null = null;
+  for (const s of list) {
+    if (s.hidden) continue;
+    if (acc && s.type === 'instance' && (s.knockout ?? 0) > 0) {
+      const cut = knockoutArea(s);
+      if (cut) {
+        acc.op(cut, PK!.PathOp.DIFFERENCE);
+        cut.delete();
+      }
+    }
+    acc = unionInto(acc, paintedArea(s));
+  }
+  return acc;
+}
+
+// An instance's artwork, placed: source frame -> instance box (+ rotation).
+function instanceArea(s: InstanceShape): SkPath | null {
+  const src = resolveSource(s.ref);
+  if (!src || !PK) return null;
+  const area = nested(() => areaOfList(src.shapes), null);
+  if (!area) return null;
+  const k = s.scale;
+  let [a, b, c, d] = [k, 0, 0, k];
+  let [tx, ty] = [s.x - src.box.x * k, s.y - src.box.y * k];
+  if (s.rotation) {
+    const r = (s.rotation * Math.PI) / 180;
+    const [cos, sin] = [Math.cos(r), Math.sin(r)];
+    const [cx, cy] = center(bbox(s));
+    // rotate(placed) around the instance center
+    [a, b, c, d] = [k * cos, -k * sin, k * sin, k * cos];
+    const [px, py] = [tx - cx, ty - cy];
+    [tx, ty] = [cx + px * cos - py * sin, cy + px * sin + py * cos];
+  }
+  area.transform(a, b, tx, c, d, ty, 0, 0, 1);
+  return area;
+}
+
+// The clearance a knockout instance cuts: its area grown by the gap (round).
+function knockoutArea(s: InstanceShape): SkPath | null {
+  const area = instanceArea(s);
+  if (!area || !PK) return area;
+  const gap = s.knockout ?? 0;
+  const ring = area.copy();
+  if (ring.stroke({ width: gap * 2, join: PK.StrokeJoin.ROUND, cap: PK.StrokeCap.ROUND })) {
+    area.op(ring, PK.PathOp.UNION);
+  }
+  ring.delete();
+  return area;
+}
+
+const koCache = new Map<string, { key: string; d: string }>();
+
+// SVG path data of a knockout's clearance, for masking the shapes below it.
+export function knockoutPath(s: InstanceShape): string {
+  if (!PK) return '';
+  const src = resolveSource(s.ref);
+  const key = JSON.stringify([s, src?.box, src?.shapes]);
+  const hit = koCache.get(s.id);
+  if (hit?.key === key) return hit.d;
+  const area = knockoutArea(s);
+  const d = area ? area.toSVGString() : '';
+  area?.delete();
+  koCache.set(s.id, { key, d });
+  return d;
+}
+
+// Filled outline of any shape (used where a format has no masks, e.g. Android).
+export function shapeAreaPath(s: Shape): string {
+  const p = paintedArea(s);
+  if (!p) return '';
+  const d = p.toSVGString();
+  p.delete();
+  return d;
+}
+
 
 // ---- Boolean groups ----------------------------------------------------------
 
@@ -117,8 +200,7 @@ export interface Flattened {
 // and scaled by `k` (e.g. 40 for Material Symbols' 960-unit grid).
 export function flattenArtboard(shapes: Shape[], ab: Box, k = 1, yOffset = 0): Flattened | null {
   if (!PK) return null;
-  let acc: SkPath | null = null;
-  for (const s of shapes) acc = unionInto(acc, paintedArea(s));
+  let acc = areaOfList(shapes);
   if (!acc) return { d: '', fillRule: 'nonzero' };
   const clip = PK.FromSVGString(`M${ab.x} ${ab.y}h${ab.w}v${ab.h}h${-ab.w}z`);
   if (clip) {

@@ -2,7 +2,7 @@
 import * as A from './actions';
 import { actualSize, deleteAnchors, finishPen, fitAll, fitArtboard, fitSelection, joinPaths, nudgeAnchors, isDrawingPath, penBackspace, setSpaceHeld, zoomAt } from './canvas';
 import type { BoolOp, Tool } from './model';
-import { commit, redo, savePrefs, state, undo } from './store';
+import { activeArtboard, commit, redo, savePrefs, state, undo } from './store';
 
 export interface AppHooks {
   setTool: (t: Tool) => void;
@@ -66,6 +66,14 @@ export const SHORTCUTS: Shortcut[] = [
   { group: 'Object', label: 'Intersect', keys: ['Ctrl+Alt+I'], run: () => bool('intersect') },
   { group: 'Object', label: 'Exclude', keys: ['Ctrl+Alt+X'], run: () => bool('exclude') },
   { group: 'Object', label: 'Release Boolean Group', keys: ['Ctrl+Shift+G'], run: () => void A.releaseBoolean() },
+  { group: 'Object', label: 'Create Component (artboard)', keys: ['Ctrl+Alt+K'], run: () => {
+    const ab = activeArtboard();
+    A.setComponent(ab.id, !ab.component);
+    hooks.toast(ab.component ? `${ab.name} is now a component` : `${ab.name} is no longer a component`);
+  } },
+  { group: 'Object', label: 'Detach Instance', keys: ['Ctrl+Alt+B'], run: () => {
+    if (A.detachSelection()) hooks.toast('Detached — the knockout gap was removed');
+  } },
   { group: 'Object', label: 'Join Paths', keys: ['Ctrl+J'], run: () => { const err = joinPaths(); if (err) hooks.toast(err); } },
   { group: 'Object', label: 'Lock Selection', keys: ['Ctrl+2'], run: A.lockSelection },
   { group: 'Object', label: 'Unlock All', keys: ['Ctrl+Alt+2'], run: A.unlockAll },
