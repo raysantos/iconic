@@ -3,6 +3,7 @@ import * as A from './actions';
 import { shiftOn } from './tablet';
 import { actualSize, deleteAnchors, finishPen, fitAll, fitArtboard, fitSelection, joinPaths, nudgeAnchors, isDrawingPath, penBackspace, setSpaceHeld, zoomAt } from './canvas';
 import type { BoolOp, Tool } from './model';
+import { armPaste, openImport } from './importer';
 import { toggleOverview } from './overview';
 import { activeArtboard, commit, redo, savePrefs, state, undo } from './store';
 
@@ -113,6 +114,7 @@ export const SHORTCUTS: Shortcut[] = [
 
   // File
   { group: 'File', label: 'New Icon', keys: ['Ctrl+Alt+N', 'Ctrl+N'], run: A.newDoc },
+  { group: 'File', label: 'Import SVG… (or drop / paste SVG)', keys: ['Ctrl+Shift+P'], run: openImport },
   { group: 'File', label: 'Save (saves automatically)', keys: ['Ctrl+S'], run: () => hooks.toast('Saved on this device') },
   { group: 'File', label: 'Export', keys: ['Ctrl+Shift+E', 'Ctrl+Alt+E'], run: () => hooks.openExport() },
   { group: 'File', label: 'Keyboard Shortcuts', keys: ['Ctrl+/', 'Shift+/'], run: () => hooks.openHelp() },
@@ -205,6 +207,9 @@ export function installShortcuts(h: AppHooks) {
     }
 
     const combo = comboOf(e);
+    // Paste lets the browser fire its paste event, which carries SVG copied
+    // from Figma, Illustrator or a web page (see importer.ts).
+    if (combo === 'Ctrl+V' || combo === 'Ctrl+Shift+V') return armPaste(combo === 'Ctrl+V' ? 'center' : 'inPlace');
     const run = table.get(combo);
     if (run) {
       e.preventDefault();

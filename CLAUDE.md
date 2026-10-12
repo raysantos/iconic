@@ -60,6 +60,8 @@ Source map:
 - `src/ui.ts`: panels
 - `src/shortcuts.ts`: keymap
 - `src/export.ts`: SVG, Android XML and PNG export
+- `src/svgimport.ts`: SVG reader (elements → shapes; holes → Exclude groups)
+- `src/importer.ts`: paste (Figma "Copy as SVG", Illustrator, web), file drop, Import SVG…
 - `src/fontexport.ts`: icon-font export
 - `src/components.ts`: badges and instances
 - `src/masters.ts`: masters and interpolation (weight, fill, grade, optical size)
@@ -85,7 +87,7 @@ npx vite --port 5174 --strictPort
 
 ## Ideas not yet requested (ask before starting)
 
-- SVG import and round-trip tests with Figma and Illustrator
+- round-trip tests with real Figma and Illustrator files
 - iOS export (asset catalog, @2x/@3x)
 - pixel-size labels on the PNG chips
 - groups (`Ctrl+G`)

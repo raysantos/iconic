@@ -2,6 +2,7 @@
 import * as A from './actions';
 import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setCursor, setHover, setSpaceHeld, viewState, zoomAt, zoomTo } from './canvas';
 import { installTablet, setTabletMode } from './tablet';
+import { installImport, openImport, pasteFromMenu } from './importer';
 import { checkSinglePath, DENSITIES, exportArtboards, fileBase, type ExportFormat, type ExportIssue } from './export';
 import { AUDIT_LABEL, auditShape } from './audit';
 import { openColorPicker } from './colorpicker';
@@ -204,6 +205,8 @@ function openMenu(anchor: HTMLElement, which: string) {
       anchor,
       menuList([
         { label: 'New icon', keys: 'Ctrl+Alt+N', run: A.newDoc },
+        { label: 'Import SVG…', keys: 'Ctrl+Shift+P', run: openImport },
+        { label: 'Paste SVG', keys: 'Ctrl+V', run: () => void pasteFromMenu() },
         { sep: true },
         { label: 'Undo', keys: 'Ctrl+Z', run: undo },
         { label: 'Redo', keys: 'Ctrl+Shift+Z', run: redo },
@@ -1563,7 +1566,7 @@ function toast(msg: string) {
   toastEl.textContent = msg;
   toastEl.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 1600);
+  toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), Math.max(1600, msg.length * 55)); // long hints stay up to be read
 }
 
 const mobile = matchMedia('(max-width: 767px)');
@@ -1594,6 +1597,7 @@ export function initUI() {
   buildTopbar();
   installShortcuts({ setTool, togglePanels, openExport, openHelp, toast });
   installTablet({ setTool, setHand: setSpaceHeld, toast });
+  installImport({ toast });
   subscribe((kind) => {
     if (kind === 'live') return updateLayoutFields();
     renderTools();

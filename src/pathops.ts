@@ -214,6 +214,26 @@ export function flattenArtboard(shapes: Shape[], ab: Box, k = 1, yOffset = 0): F
   return out;
 }
 
+// Imported paths with holes become Exclude (even-odd) groups. For a path drawn
+// with the default nonzero rule whose contours overlap, even-odd would punch
+// wrong holes, so it is re-cut into non-overlapping contours. null = already fine.
+export function windingAsEvenOdd(d: string): string | null {
+  if (!PK) return null;
+  const a = PK.FromSVGString(d);
+  if (!a) return null;
+  const b = a.copy();
+  b.setFillType(PK.FillType.EVENODD);
+  const diff = PK.MakeFromOp(a, b, PK.PathOp.XOR);
+  const box = diff && toBox(diff);
+  const same = !box || box.w * box.h < 1e-9;
+  diff?.delete();
+  b.delete();
+  let out: string | null = null;
+  if (!same && a.simplify()) out = a.toSVGString();
+  a.delete();
+  return out;
+}
+
 // Path data moved/scaled: (x, y) -> (x * k + tx, y * k + ty).
 export function transformPath(d: string, k: number, tx: number, ty: number): string {
   if (!PK || !d) return d;

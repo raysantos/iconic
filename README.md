@@ -43,6 +43,19 @@ Iconic is made for designing **Google Material icons**, on PC and phone. It has 
 - **Double-click** the result to select a shape inside; groups appear as a tree in Layers
 - Powered by **Skia PathOps**, Google's path engine from Chrome and Android, running as WebAssembly
 
+## Import SVG (Figma, Illustrator, the web)
+
+- **Paste** (`Ctrl+V`) SVG code straight onto the canvas:
+  - **Figma:** right-click → **Copy/Paste as → Copy as SVG**. A plain `Ctrl+C` in Figma copies Figma's own private format, which other apps can't read; Iconic tells you if that's what's on the clipboard
+  - **Illustrator:** `Ctrl+C` copies SVG code when *Preferences → Clipboard Handling → SVG Code* is on
+  - **Web pages:** copied SVG code, inline `<svg>` icons and `<img>` SVGs (when the site allows it)
+- **Import SVG…** (`Ctrl+Shift+P`, Illustrator's Place) or **drop .svg files** on the window: each file becomes its own artboard, named from the file (`home_24dp_….svg` → `home`). A single file goes onto the active artboard when it's empty
+- **Paste SVG** in the main menu pastes without a keyboard (pen and touch); the browser asks for clipboard access once
+- **What you get:** rectangles, circles/ellipses and lines stay live shapes (rotation kept); paths, polygons and polylines become editable Bezier paths; a path with holes becomes an **Exclude** group, so the holes stay holes and export back to the same single path. Fill, stroke, stroke width, ends and corners, transforms, `viewBox` scaling, Illustrator's `<style>` classes and layer names come along
+- **No black boxes:** invisible helper shapes (like Material's `<path d="M0 0h24v24H0z" fill="none"/>`), inherited `fill="none"` (Lucide, Feather) and Figma's white frame background are handled, so they don't turn into black squares
+- **Placement:** an SVG the size of the artboard (a whole icon) lines up with it exactly; anything else lands in the middle of the view on whole pixels. Huge `viewBox`es (Material's 960 grid) scale to the icon size
+- Not imported: text and images (convert text to outlines first), clip paths, masks and filters; gradients use their first color
+
 ## Artboards (an icon set on one canvas)
 
 - **Moving artboards:** with any tool, drag an artboard's name label to move it with its artwork. With the Selection tool, a selected artboard also drags by its empty area. `Alt`-drag duplicates
@@ -88,6 +101,7 @@ Press `Ctrl+/` in the app for the full list. Highlights:
 | Rectangle / Ellipse / Line | `M` `L` `\` | Transform again | `Ctrl+D` | Fit artboard / all / 1× | `Ctrl+0` / `Ctrl+Alt+0` / `Ctrl+1` |
 | Pencil / Hand / Zoom | `N` `H` `Z` | Select all / Deselect | `Ctrl+A` / `Ctrl+Shift+A` | Smart guides / Keylines | `Ctrl+U` / `Ctrl+;` |
 | Temporary hand | hold `Space` | Default colors / Swap / None | `D` / `Shift+X` / `/` | Grid / Snap / Panels | `Ctrl+'` / `Ctrl+Shift+'` / `Tab` |
+| | | Import SVG (Place) | `Ctrl+Shift+P` | Export | `Ctrl+Shift+E` |
 
 On Mac, `Ctrl` is `⌘` and `Alt` is `⌥`. In a browser tab, Chrome reserves a few combos (`Ctrl+1`–`3`, `Ctrl+N`); install the app to use all of them.
 
@@ -100,7 +114,7 @@ npm run dev
 
 `npm run dev` listens on your local network, so you can open the printed `Network:` URL on your phone (same Wi-Fi) to test touch.
 
-Source layout: `src/model.ts` (types), `geometry.ts` (shape math, Bezier), `fit.ts` (curve fitting), `guides.ts` (smart guides), `pathops.ts` (Skia booleans / outline stroke), `store.ts` (document, selection, undo), `actions.ts` (editing commands), `canvas.ts` (view and tools), `ui.ts` (panels, menus), `shortcuts.ts` (keymap), `export.ts` (SVG / Android / PNG), `svg.ts`, `icons.ts`.
+Source layout: `src/model.ts` (types), `geometry.ts` (shape math, Bezier), `fit.ts` (curve fitting), `guides.ts` (smart guides), `pathops.ts` (Skia booleans / outline stroke), `store.ts` (document, selection, undo), `actions.ts` (editing commands), `canvas.ts` (view and tools), `ui.ts` (panels, menus), `shortcuts.ts` (keymap), `export.ts` (SVG / Android / PNG), `svgimport.ts` (SVG reader), `importer.ts` (paste, drop, Import SVG), `svg.ts`, `icons.ts`.
 
 ## Build
 
@@ -112,7 +126,7 @@ Output goes to `dist/`. Every push to `main` deploys automatically to GitHub Pag
 
 ## Roadmap ideas
 
-- SVG import (Figma / Illustrator files) and round-trip tests
+- Round-trip tests with Figma and Illustrator files
 - Destructive Outline Stroke / Flatten commands
 - Groups (`Ctrl+G`)
 - Icon font / sprite export
