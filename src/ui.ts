@@ -67,6 +67,21 @@ export function setTool(t: Tool) {
 
 const topbar = q('#topbar');
 
+// On launch the menu logo shows the full-colour app icon, sweeps the brand gradient
+// like raysandesigns.com's header, settles on coral to peach, then fades to the mono mark.
+function playLogoIntro() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const btn = topbar.querySelector<HTMLElement>('.menu-btn');
+  if (!btn) return;
+  const o = document.createElement('span');
+  o.className = 'logo-intro';
+  o.setAttribute('aria-hidden', 'true');
+  o.innerHTML = `<svg width="22" height="22" viewBox="0 0 48 48"><defs><linearGradient id="logo-intro-g" x1="0" y1="0" x2="3" y2="0"><stop offset="0" stop-color="#18988b"/><stop offset=".33" stop-color="#3cb4e5"/><stop offset=".67" stop-color="#ff7e5f"/><stop offset="1" stop-color="#feb47b"/><animateTransform attributeName="gradientTransform" type="translate" from="0 0" to="-2 0" dur="1.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".42 0 .58 1"/></linearGradient></defs><rect width="48" height="48" rx="10" fill="url(#logo-intro-g)"/><rect x="9" y="9" width="17" height="17" fill="#fff" fill-opacity=".5"/><circle cx="29.5" cy="29.5" r="9.5" fill="#fff"/></svg>`;
+  btn.append(o);
+  setTimeout(() => o.classList.add('out'), 2300);
+  setTimeout(() => o.remove(), 3000);
+}
+
 function buildTopbar() {
   topbar.innerHTML = `
     <div class="tb-left">
@@ -107,6 +122,7 @@ function buildTopbar() {
     if (sheet) toggleSheet(sheet.dataset.sheet as 'left' | 'right');
   });
   renderTools();
+  playLogoIntro();
 }
 
 function renderTools() {
