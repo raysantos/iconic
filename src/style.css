@@ -736,12 +736,6 @@ body.scrubbing * {
   vector-effect: non-scaling-stroke;
 }
 
-#canvas .artboard-label {
-  fill: var(--ui-text-2);
-  font-family: 'Roboto Flex Variable', Roboto, system-ui, sans-serif;
-  pointer-events: none;
-}
-
 #canvas .grid {
   fill: none;
   stroke: var(--grid);
@@ -1182,9 +1176,11 @@ body.tablet .tablet-bar {
 }
 #canvas .artboard-label .label-hit {
   fill: transparent;
-  cursor: default;
+  pointer-events: all;
+  cursor: move;
 }
-#canvas[data-tool='artboard'] .artboard {
+#canvas[data-tool='artboard'] .artboard,
+#canvas[data-tool='select'] .artboard.selected {
   cursor: move;
 }
 #canvas .artboard-bounds {

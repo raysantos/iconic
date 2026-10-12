@@ -45,7 +45,8 @@ Iconic is made for designing **Google Material icons**, on PC and phone. It has 
 
 ## Artboards (an icon set on one canvas)
 
-- **Artboard tool** (`Shift+O`): drag to create; drag an artboard (or its name label) to move it with its artwork; `Alt`-drag to duplicate; corner handles resize
+- **Moving artboards:** with any tool, drag an artboard's name label to move it with its artwork. With the Selection tool, a selected artboard also drags by its empty area. `Alt`-drag duplicates
+- **Artboard tool** (`Shift+O`): drag to create; drag an artboard to move it; corner handles resize
 - **Artboards panel:** add, duplicate (with artwork), rename, delete; click to zoom
 - **Arrange all artboards** into a grid with chosen columns and gap; new artboards fill the next grid cell
 - **Grid:** pixel grid plus an optional stronger line every 2/4/8 px; snap to ½ px, 1 px or the grid

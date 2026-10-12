@@ -191,7 +191,7 @@ export function render() {
   world.replaceChildren();
 
   for (const ab of artboards()) {
-    const bg = el('rect', { x: ab.x, y: ab.y, width: ab.w, height: ab.h }, 'artboard');
+    const bg = el('rect', { x: ab.x, y: ab.y, width: ab.w, height: ab.h }, 'artboard' + (state.artboardSelected && ab.id === state.activeArtboard ? ' selected' : ''));
     bg.dataset.artboardBg = ab.id;
     world.append(bg);
     if (state.prefs.keylines && state.prefs.materialMode) world.append(keylineTemplate(ab));
@@ -635,7 +635,9 @@ svg.addEventListener('pointerdown', (e) => {
   }
   const labelId = target.closest<SVGElement>('[data-artboard]')?.dataset.artboard;
   const bgId = target.closest<SVGElement>('[data-artboard-bg]')?.dataset.artboardBg;
-  if (labelId || (tool === 'artboard' && bgId)) {
+  // A selected artboard also drags by its empty area (like a Figma frame).
+  const dragBg = bgId && (tool === 'artboard' || (tool === 'select' && state.artboardSelected && bgId === state.activeArtboard));
+  if (labelId || dragBg) {
     const ab = artboardById((labelId ?? bgId)!)!;
     setActiveArtboard(ab.id, true);
     checkpoint();
