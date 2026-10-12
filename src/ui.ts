@@ -126,7 +126,9 @@ function updateTopbar() {
   q('.doc-meta', topbar).textContent = `${ab.name} · ${ab.w} × ${ab.h}`;
 }
 
-const updateZoomLabel = () => (q('.zoom-val', topbar).textContent = `${Math.round(viewState.zoom * 100)}%`);
+// Magnification, not percent: 24× means one icon pixel spans 24 screen pixels.
+const fmtZoom = (z: number) => `${z >= 10 ? Math.round(z) : +z.toFixed(1)}×`;
+const updateZoomLabel = () => (q('.zoom-val', topbar).textContent = fmtZoom(viewState.zoom));
 
 // ---- Menus & popovers ------------------------------------------------------
 
@@ -236,9 +238,9 @@ function openMenu(anchor: HTMLElement, which: string) {
         { label: 'Fit all artboards', keys: 'Ctrl+Alt+0', run: fitAll },
         { label: 'All icons (overview)', keys: 'Ctrl+Shift+O', run: () => toggleOverview() },
         { label: 'Zoom to selection', keys: 'Shift+2', run: fitSelection },
-        { label: 'Actual size (100%)', keys: 'Ctrl+1', run: actualSize },
+        { label: 'Actual size (1×)', keys: 'Ctrl+1', run: actualSize },
         { sep: true },
-        ...[800, 1600, 3200].map((p) => ({ label: `${p}%`, run: () => zoomAt(p / 100 / viewState.zoom) })),
+        ...[8, 16, 32].map((m) => ({ label: fmtZoom(m), run: () => zoomAt(m / viewState.zoom) })),
       ]),
       'right',
     );

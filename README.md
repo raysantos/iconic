@@ -74,7 +74,7 @@ Press `Ctrl+/` in the app for the full list. Highlights:
 | Selection / Direct Selection | `V` / `A` | Paste / in front / in back | `Ctrl+V` / `Ctrl+F` / `Ctrl+B` | Arrange | `Ctrl+[` `Ctrl+]` (+`Shift` for back/front) |
 | Artboard | `Shift+O` | Paste in place | `Ctrl+Shift+V` | Join paths | `Ctrl+J` |
 | Pen / Add / Delete / Convert | `P` `+` `-` `Shift+C` | Duplicate | `Alt`+drag | Lock / Hide (+`Alt` = all) | `Ctrl+2` / `Ctrl+3` |
-| Rectangle / Ellipse / Line | `M` `L` `\` | Transform again | `Ctrl+D` | Fit artboard / all / 100% | `Ctrl+0` / `Ctrl+Alt+0` / `Ctrl+1` |
+| Rectangle / Ellipse / Line | `M` `L` `\` | Transform again | `Ctrl+D` | Fit artboard / all / 1× | `Ctrl+0` / `Ctrl+Alt+0` / `Ctrl+1` |
 | Pencil / Hand / Zoom | `N` `H` `Z` | Select all / Deselect | `Ctrl+A` / `Ctrl+Shift+A` | Smart guides / Keylines | `Ctrl+U` / `Ctrl+;` |
 | Temporary hand | hold `Space` | Default colors / Swap / None | `D` / `Shift+X` / `/` | Grid / Snap / Panels | `Ctrl+'` / `Ctrl+Shift+'` / `Tab` |
 
