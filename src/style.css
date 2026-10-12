@@ -976,6 +976,98 @@ body.scrubbing * {
   color: var(--ui-text-2);
 }
 
+/* ---- Tablet mode: on-screen keys and the pen's tool wheel ---------------------- */
+
+.tablet-bar {
+  display: none;
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  z-index: 20;
+  transform: translateY(-50%);
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--topbar);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+body.tablet .tablet-bar {
+  display: flex;
+}
+.tk {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  color: var(--topbar-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tk:hover {
+  background: var(--topbar-hover);
+}
+.tk[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+.tk-sep {
+  height: 1px;
+  margin: 2px 6px;
+  background: rgb(255 255 255 / 0.15);
+}
+
+.tool-wheel {
+  display: none;
+  position: fixed;
+  z-index: 300;
+  width: 0;
+  height: 0;
+}
+.tool-wheel.show {
+  display: block;
+}
+.tool-wheel::before {
+  content: '';
+  position: absolute;
+  left: -100px;
+  top: -100px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: rgb(30 30 30 / 0.92);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.3);
+}
+.tw-btn {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  color: #fff;
+}
+.tw-btn:hover {
+  background: rgb(255 255 255 / 0.12);
+}
+.tw-btn[aria-pressed='true'] {
+  background: var(--accent);
+}
+.tw-close {
+  left: 0;
+  top: 0;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  color: var(--ui-text-2);
+}
+
 #toast {
   position: fixed;
   left: 50%;

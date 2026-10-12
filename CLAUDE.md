@@ -69,6 +69,7 @@ Source map:
 - `src/guides.ts`: smart guides
 - `src/overview.ts`: Overview grid
 - `src/colorpicker.ts`: colour picker
+- `src/tablet.ts`: tablet mode (on-screen Shift/Alt/Hand, undo/redo bar, pen tool wheel)
 
 ## Develop
 

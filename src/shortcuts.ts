@@ -1,5 +1,6 @@
 // Adobe Illustrator-style keyboard shortcuts (Ctrl = Cmd and Alt = Option on Mac).
 import * as A from './actions';
+import { shiftOn } from './tablet';
 import { actualSize, deleteAnchors, finishPen, fitAll, fitArtboard, fitSelection, joinPaths, nudgeAnchors, isDrawingPath, penBackspace, setSpaceHeld, zoomAt } from './canvas';
 import type { BoolOp, Tool } from './model';
 import { toggleOverview } from './overview';
@@ -193,7 +194,7 @@ export function installShortcuts(h: AppHooks) {
     }
 
     if (e.key.startsWith('Arrow')) {
-      const step = e.shiftKey ? 10 : 1;
+      const step = shiftOn(e) ? 10 : 1;
       const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
       if (d && nudgeAnchors(d[0], d[1])) e.preventDefault();
       else if (d && state.selection.length) {

@@ -53,6 +53,9 @@ const P: Record<string, string> = {
   capButt: '<rect x="8" y="9" width="13" height="6" fill="currentColor" stroke="none"/><path d="M8 4v16" stroke-width="1" opacity=".55"/>',
   capRound: '<path d="M8 9h13v6H8a3 3 0 0 1 0-6z" fill="currentColor" stroke="none"/><path d="M8 4v16" stroke-width="1" opacity=".55"/>',
   capSquare: '<rect x="5" y="9" width="16" height="6" fill="currentColor" stroke="none"/><path d="M8 4v16" stroke-width="1" opacity=".55"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
   keyboard: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
 };
 

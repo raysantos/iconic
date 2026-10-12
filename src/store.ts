@@ -24,6 +24,7 @@ interface Prefs {
   singlePath: boolean; // Google format export
   grid960: boolean; // Material Symbols 960-unit SVG
   mergedPreview: boolean; // show icons as their merged single path (Ctrl+Y)
+  tabletMode: boolean | null; // pen draws, fingers navigate; null = not chosen yet (turns on with the first pen touch)
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -47,6 +48,7 @@ const DEFAULT_PREFS: Prefs = {
   singlePath: true,
   grid960: true,
   mergedPreview: false,
+  tabletMode: null,
 };
 
 export const state = {

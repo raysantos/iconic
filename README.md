@@ -65,6 +65,16 @@ Iconic is made for designing **Google Material icons**, on PC and phone. It has 
 - **Layers:** multi-select, drag to reorder, rename, lock, hide
 - Undo/redo, autosave, mouse/touch (pinch zoom)/stylus
 
+## Pen tablets (Tablet mode)
+
+Made for pen displays like the Wacom Movink, with or without a keyboard. Tablet mode switches on by itself the first time a pen touches the canvas (toggle it in the main menu).
+
+- **The pen draws, fingers navigate:** one finger pans, two fingers pinch-zoom, and a resting palm is ignored
+- **Undo / Redo:** a quick two-finger tap undoes, a three-finger tap redoes; there are also Undo and Redo buttons on screen
+- **On-screen keys:** Shift, Alt and Hand on a floating bar. Tap a key to lock it on (tap again to release), or hold it for a moment while you drag with the pen
+- **Pen side button:** drag to pan; click it to open a **tool wheel** at the pen tip (Selection, Direct Selection, Pen, Pencil, Rectangle, Ellipse, Line, Artboard)
+- **Smoother Pencil:** every point the pen reports is used, so freehand curves follow your hand closely
+
 ## Keyboard shortcuts (Illustrator layout)
 
 Press `Ctrl+/` in the app for the full list. Highlights:

@@ -34,11 +34,13 @@ import {
   newId,
   nextArtboardName,
   nextName,
+  redo,
   selected,
   setActiveArtboard,
   shapes,
   state,
   subscribe,
+  undo,
 } from './store';
 import { paintColor, visibleOn } from './export';
 import { AUDIT_LABEL, auditShape } from './audit';
@@ -47,6 +49,7 @@ import { cubicsToNodes, fitCurve, removeAnchorSmooth, reverseNodes } from './fit
 import { collectTargets, smartOn, snapBox, snapPoint, type Guide } from './guides';
 import { flattenArtboard, hasPathOps } from './pathops';
 import { el, renderShapes, setAttrs, shapeGeometry } from './svg';
+import { altOn, notify, openToolWheel, penSeen, shiftOn } from './tablet';
 
 const svg = document.getElementById('canvas') as unknown as SVGSVGElement;
 const world = el('g');
@@ -488,7 +491,7 @@ function ensureBezier(id: string): BezierShape {
 // ---- Gestures ------------------------------------------------------------
 
 type Gesture =
-  | { kind: 'pan'; start: Pt; x0: number; y0: number }
+  | { kind: 'pan'; start: Pt; x0: number; y0: number; wheel?: [number, number] }
   | { kind: 'marquee'; start: Pt; base: string[] }
   | { kind: 'move'; start: Pt; list: Shape[]; originals: Shape[]; box0: Box; alt: boolean; copied: boolean; dx: number; dy: number }
   | { kind: 'resize'; handle: Handle; list: Shape[]; originals: Shape[]; box0: Box }
@@ -518,7 +521,74 @@ function screenPt(e: PointerEvent): Pt {
   return [e.clientX - r.left, e.clientY - r.top];
 }
 
+// ---- Tablet mode: the pen draws, fingers navigate ------------------------------
+// One finger pans, two pinch-zoom; a quick two-finger tap undoes, three redoes.
+// Touches are ignored while the pen is down, and big contacts (a palm) never count.
+
+const tabletOn = () => !!state.prefs.tabletMode;
+let penContact = false;
+const fingers = new Map<number, { start: Pt; at: Pt }>();
+let nav: { mid: Pt; dist: number } | null = null;
+let tap: { t0: number; max: number; moved: boolean } | null = null;
+
+function fingerSpread() {
+  const pts = [...fingers.values()].map((f) => f.at);
+  const mid: Pt = [pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length];
+  const dist = pts.length > 1 ? Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]) : 0;
+  return { mid, dist };
+}
+
+function fingerDown(e: PointerEvent) {
+  if (penContact || Math.max(e.width, e.height) > 44) return;
+  svg.setPointerCapture(e.pointerId);
+  const sp = screenPt(e);
+  if (!fingers.size) tap = { t0: e.timeStamp, max: 0, moved: false };
+  fingers.set(e.pointerId, { start: sp, at: sp });
+  if (tap) tap.max = Math.max(tap.max, fingers.size);
+  nav = fingerSpread();
+}
+
+function fingerMove(e: PointerEvent) {
+  const f = fingers.get(e.pointerId);
+  if (!f || !nav) return;
+  f.at = screenPt(e);
+  if (tap && Math.hypot(f.at[0] - f.start[0], f.at[1] - f.start[1]) > 10) tap.moved = true;
+  const { mid, dist } = fingerSpread();
+  viewState.x += mid[0] - nav.mid[0];
+  viewState.y += mid[1] - nav.mid[1];
+  if (dist && nav.dist) zoomAt(dist / nav.dist, mid[0], mid[1]);
+  else applyView();
+  nav = { mid, dist };
+}
+
+function fingerUp(e: PointerEvent) {
+  if (!fingers.delete(e.pointerId)) return;
+  if (fingers.size) return void (nav = fingerSpread());
+  nav = null;
+  const t = tap;
+  tap = null;
+  if (!t || t.moved || e.type === 'pointercancel' || e.timeStamp - t.t0 > 350) return;
+  if (t.max === 2) {
+    undo();
+    notify('Undo');
+  } else if (t.max === 3) {
+    redo();
+    notify('Redo');
+  }
+}
+
+function dropFingers() {
+  fingers.clear();
+  nav = tap = null;
+}
+
 svg.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'pen') {
+    penSeen();
+    penContact = e.button === 0;
+    dropFingers(); // a palm that landed first doesn't keep panning
+  }
+  if (e.pointerType === 'touch' && tabletOn()) return fingerDown(e);
   if (e.pointerType === 'touch') {
     pointers.set(e.pointerId, screenPt(e));
     if (pointers.size === 2) {
@@ -542,11 +612,17 @@ svg.addEventListener('pointerdown', (e) => {
     svg.classList.add('panning-active');
     return;
   }
+  // Pen side button: drag to pan, click to open the tool wheel.
+  if (e.pointerType === 'pen' && e.button === 2) {
+    gesture = { kind: 'pan', start: screenPt(e), x0: viewState.x, y0: viewState.y, wheel: [e.clientX, e.clientY] };
+    svg.classList.add('panning-active');
+    return;
+  }
   if (e.button !== 0) return;
 
   if (tool === 'zoom') {
     const [sx, sy] = screenPt(e);
-    return zoomAt(e.altKey ? 0.5 : 2, sx, sy);
+    return zoomAt(altOn(e) ? 0.5 : 2, sx, sy);
   }
 
   // Artboards: corner handles, name labels, and the Artboard tool.
@@ -564,7 +640,7 @@ svg.addEventListener('pointerdown', (e) => {
     setActiveArtboard(ab.id, true);
     checkpoint();
     const artwork = shapesOn(ab).filter((s) => !s.locked);
-    gesture = { kind: 'abMove', ab, start: p, x0: ab.x, y0: ab.y, artwork, originals: structuredClone(artwork), alt: e.altKey, copied: false };
+    gesture = { kind: 'abMove', ab, start: p, x0: ab.x, y0: ab.y, artwork, originals: structuredClone(artwork), alt: altOn(e), copied: false };
     emit();
     return;
   }
@@ -604,7 +680,7 @@ svg.addEventListener('pointerdown', (e) => {
     const sid = nodeEl.dataset.sid;
     const i = Number(nodeEl.dataset.node);
     const part = nodeEl.dataset.part as NodePart;
-    if (tool === 'direct' && part === 'p') return startAnchorDrag(sid, i, p, e.shiftKey);
+    if (tool === 'direct' && part === 'p') return startAnchorDrag(sid, i, p, shiftOn(e));
     checkpoint();
     const s = ensureBezier(sid);
     if (tool === 'deleteAnchor' && part === 'p') {
@@ -620,7 +696,7 @@ svg.addEventListener('pointerdown', (e) => {
     return;
   }
 
-  if (tool === 'pen') return penDown(p, e.shiftKey);
+  if (tool === 'pen') return penDown(p, shiftOn(e));
 
   const shapeEl = target.closest<SVGElement>('[data-id]');
   const hitId = shapeEl?.dataset.id ?? null;
@@ -659,22 +735,22 @@ svg.addEventListener('pointerdown', (e) => {
       const c = center(worldBox(byId(hitId)!));
       const owner = artboards().find((a) => inside(a, c));
       if (owner) state.activeArtboard = owner.id;
-      if (e.shiftKey) {
+      if (shiftOn(e)) {
         state.selection = isSelected(hitId) ? state.selection.filter((id) => id !== hitId) : [...state.selection, hitId];
         emit();
         if (!isSelected(hitId)) return;
       } else if (!isSelected(hitId)) {
         state.selection = [hitId];
       }
-      if (!e.shiftKey) state.anchors = [];
+      if (!shiftOn(e)) state.anchors = [];
       const list = selected().filter((s) => !s.locked);
       checkpoint();
-      gesture = { kind: 'move', start: p, list, originals: structuredClone(list), box0: unionBox(list.map(worldBox)), alt: e.altKey, copied: false, dx: 0, dy: 0 };
+      gesture = { kind: 'move', start: p, list, originals: structuredClone(list), box0: unionBox(list.map(worldBox)), alt: altOn(e), copied: false, dx: 0, dy: 0 };
       emit();
     } else {
-      gesture = { kind: 'marquee', start: p, base: e.shiftKey ? [...state.selection] : [] };
-      if (!e.shiftKey) state.anchors = [];
-      if (!e.shiftKey && state.selection.length) {
+      gesture = { kind: 'marquee', start: p, base: shiftOn(e) ? [...state.selection] : [] };
+      if (!shiftOn(e)) state.anchors = [];
+      if (!shiftOn(e) && state.selection.length) {
         state.selection = [];
         emit();
       }
@@ -707,6 +783,7 @@ function lineStyle(style: typeof state.prefs.style) {
 const angle = (c: Pt, p: Pt) => (Math.atan2(p[1] - c[1], p[0] - c[0]) * 180) / Math.PI;
 
 svg.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'touch' && tabletOn()) return fingerMove(e);
   if (e.pointerType === 'touch' && pointers.has(e.pointerId)) {
     pointers.set(e.pointerId, screenPt(e));
     if (pinch && pointers.size === 2) {
@@ -730,7 +807,7 @@ svg.addEventListener('pointermove', (e) => {
     const showHover = state.tool === 'select' || pointTools.has(state.tool);
     const next = showHover ? id : null;
     if (penPath) {
-      penHover = e.shiftKey ? snapPt(constrain45(penPath.nodes[penPath.nodes.length - 1].p, p)) : smartPoint(p);
+      penHover = shiftOn(e) ? snapPt(constrain45(penPath.nodes[penPath.nodes.length - 1].p, p)) : smartPoint(p);
       render();
     } else if (next !== hoverId) {
       hoverId = next;
@@ -760,11 +837,11 @@ svg.addEventListener('pointermove', (e) => {
       break;
     }
     case 'abResize':
-      resizeArtboard(g, p, e.shiftKey);
+      resizeArtboard(g, p, shiftOn(e));
       break;
     case 'abCreate': {
       let [x, y] = [Math.round(p[0]), Math.round(p[1])];
-      if (e.shiftKey) {
+      if (shiftOn(e)) {
         const m = Math.max(Math.abs(x - g.start[0]), Math.abs(y - g.start[1]));
         x = g.start[0] + Math.sign(x - g.start[0] || 1) * m;
         y = g.start[1] + Math.sign(y - g.start[1] || 1) * m;
@@ -799,7 +876,7 @@ svg.addEventListener('pointermove', (e) => {
     case 'move': {
       let dx = p[0] - g.start[0];
       let dy = p[1] - g.start[1];
-      if (e.shiftKey) Math.abs(dx) > Math.abs(dy) ? (dy = 0) : (dx = 0);
+      if (shiftOn(e)) Math.abs(dx) > Math.abs(dy) ? (dy = 0) : (dx = 0);
       // Smart guides first; otherwise snap the selection's corner to the grid.
       const sg = smartOn() ? snapBox({ ...g.box0, x: g.box0.x + dx, y: g.box0.y + dy }, targets(g.list.map((x) => x.id)), viewState.zoom) : null;
       guides = sg?.guides ?? [];
@@ -819,7 +896,7 @@ svg.addEventListener('pointermove', (e) => {
       break;
     }
     case 'resize':
-      resize(g, p, e.shiftKey, e.altKey);
+      resize(g, p, shiftOn(e), altOn(e));
       break;
     case 'rotate': {
       let delta = angle(g.pivot, p) - g.a0;
@@ -827,22 +904,27 @@ svg.addEventListener('pointermove', (e) => {
       let abs = base + delta;
       const nearest = Math.round(abs / 15) * 15;
       // Shift locks to 15° steps; otherwise it gently snaps when close to one.
-      abs = e.shiftKey || Math.abs(abs - nearest) < 2 ? nearest : Math.round(abs);
+      abs = shiftOn(e) || Math.abs(abs - nearest) < 2 ? nearest : Math.round(abs);
       delta = abs - base;
       rotateShapes(g.list, g.originals, delta, g.pivot);
       break;
     }
     case 'create':
-      drawShape(g, p, g.shape.type === 'path' ? p : smartPoint(p, [g.shape.id]), e.shiftKey, e.altKey);
+      if (g.shape.type === 'path') {
+        // Every sample the pen reported, not just one per frame: smoother Pencil curves.
+        for (const c of e.getCoalescedEvents?.() ?? [e]) g.shape.points.push(eventPoint(c));
+        break;
+      }
+      drawShape(g, smartPoint(p, [g.shape.id]), shiftOn(e), altOn(e));
       break;
     case 'pen':
-      penDrag(smartPoint(p, [], undefined, false), e.altKey, g.keepIn);
+      penDrag(smartPoint(p, [], undefined, false), altOn(e), g.keepIn);
       break;
     case 'node':
-      editNode(g, p, e.shiftKey, e.altKey);
+      editNode(g, p, shiftOn(e), altOn(e));
       break;
     case 'nodes':
-      moveAnchors(g, p, e.shiftKey);
+      moveAnchors(g, p, shiftOn(e));
       break;
     case 'tunni': {
       const { n0, n1 } = segmentAt(g.shape.nodes, g.seg);
@@ -864,6 +946,8 @@ svg.addEventListener('pointermove', (e) => {
 });
 
 function endGesture(e: PointerEvent) {
+  if (e.pointerType === 'pen') penContact = false;
+  if (e.pointerType === 'touch' && tabletOn()) return fingerUp(e);
   if (e.pointerType === 'touch') {
     pointers.delete(e.pointerId);
     if (pinch) {
@@ -878,8 +962,11 @@ function endGesture(e: PointerEvent) {
   svg.classList.remove('panning-active');
   if (!g) return;
   switch (g.kind) {
-    case 'pan':
+    case 'pan': {
+      const [sx, sy] = screenPt(e);
+      if (g.wheel && Math.hypot(sx - g.start[0], sy - g.start[1]) < 6) openToolWheel(...g.wheel);
       return;
+    }
     case 'abCreate':
       if (g.ab.w < 1 || g.ab.h < 1) {
         // A click with the Artboard tool doesn't leave an empty artboard.
@@ -923,6 +1010,8 @@ function endGesture(e: PointerEvent) {
   finish();
 }
 svg.addEventListener('pointerup', endGesture);
+// No browser menu on the canvas (right-click, pen side button, long press).
+svg.addEventListener('contextmenu', (e) => e.preventDefault());
 svg.addEventListener('pointercancel', endGesture);
 
 function finish(save = true) {
@@ -1079,13 +1168,9 @@ function toggleSmooth(s: BezierShape, i: number) {
 // ---- Shape tools -----------------------------------------------------------
 
 // Shift: square / circle / 45° line. Alt: draw from the center (Illustrator).
-function drawShape(g: Extract<Gesture, { kind: 'create' }>, raw: Pt, snapped: Pt, shift: boolean, alt: boolean) {
+function drawShape(g: Extract<Gesture, { kind: 'create' }>, snapped: Pt, shift: boolean, alt: boolean) {
   const s = g.shape;
   const [x0, y0] = g.start;
-  if (s.type === 'path') {
-    s.points.push(raw);
-    return;
-  }
   let [x, y] = snapped;
   if (s.type === 'line') {
     if (shift) [x, y] = snapPt(constrain45(g.start, [x, y]));

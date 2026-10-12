@@ -1,6 +1,7 @@
 // Figma-style chrome: top bar, Layers panel, Design panel, menus, dialogs.
 import * as A from './actions';
-import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setCursor, setHover, viewState, zoomAt, zoomTo } from './canvas';
+import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setCursor, setHover, setSpaceHeld, viewState, zoomAt, zoomTo } from './canvas';
+import { installTablet, setTabletMode } from './tablet';
 import { checkSinglePath, DENSITIES, exportArtboards, fileBase, type ExportFormat, type ExportIssue } from './export';
 import { AUDIT_LABEL, auditShape } from './audit';
 import { openColorPicker } from './colorpicker';
@@ -223,6 +224,7 @@ function openMenu(anchor: HTMLElement, which: string) {
         { label: 'Smart guides', keys: 'Ctrl+U', checked: state.prefs.smartGuides, run: () => togglePref('smartGuides') },
         { label: 'Snap to grid', keys: "Ctrl+Shift+'", checked: state.prefs.snap, run: () => togglePref('snap') },
         { label: 'Hide panels', keys: 'Tab', run: togglePanels },
+        { label: 'Tablet mode (pen + touch)', checked: !!state.prefs.tabletMode, run: () => setTabletMode(!state.prefs.tabletMode) },
         { sep: true },
         { label: 'Export…', keys: 'Ctrl+Shift+E', run: openExport },
         { label: 'Keyboard shortcuts', keys: 'Ctrl+/', run: openHelp },
@@ -1542,6 +1544,13 @@ function openHelp() {
           .join('')}</dl></section>`,
       )
       .join('')}</div>
+    <div class="help-cols"><section><h3>Pen &amp; touch (Tablet mode, in the main menu)</h3><dl>
+      <div><dt>Draw, select, edit</dt><dd>Pen</dd></div>
+      <div><dt>Pan / zoom</dt><dd>1 finger / pinch</dd></div>
+      <div><dt>Undo / Redo</dt><dd>2-finger tap / 3-finger tap</dd></div>
+      <div><dt>Shift, Alt, Hand</dt><dd>tap to lock on · hold for a moment</dd></div>
+      <div><dt>Pen side button</dt><dd>drag to pan · click for the tool wheel</dd></div>
+    </dl></section></div>
     <p class="help-note">Tip: in a browser tab, Chrome keeps a few keys for itself (Ctrl+1–3, Ctrl+N). Install Iconic as an app to use every shortcut.</p>`;
   q('.sheet-close', helpDialog).addEventListener('click', () => helpDialog.close());
   helpDialog.showModal();
@@ -1584,6 +1593,7 @@ document.addEventListener('click', (e) => {
 export function initUI() {
   buildTopbar();
   installShortcuts({ setTool, togglePanels, openExport, openHelp, toast });
+  installTablet({ setTool, setHand: setSpaceHeld, toast });
   subscribe((kind) => {
     if (kind === 'live') return updateLayoutFields();
     renderTools();
