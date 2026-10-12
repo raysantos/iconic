@@ -29,7 +29,7 @@ Ray is a designer: explain things in plain language, not jargon.
   - Illustrator shortcut meanings (matched by physical key code in `shortcuts.ts`)
 - **Figma look:**
   - Layers/Assets panel on the left, Design panel on the right
-  - accent `#0D99FF`, component purple `#9747FF`
+  - accent `#FF8C3A` (Raysan brand orange), component purple `#9747FF`
   - Roboto Flex interface font (bundled, works offline)
 - **Non-destructive editing:**
   - boolean groups keep their children editable
