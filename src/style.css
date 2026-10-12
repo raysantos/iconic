@@ -181,7 +181,7 @@ body.panels-hidden .panel {
   display: flex;
   gap: 2px;
   padding: 0 4px;
-  color: var(--accent);
+  color: var(--topbar-text);
 }
 .menu-btn .icon:last-child {
   color: var(--topbar-text);
