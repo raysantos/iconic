@@ -30,7 +30,7 @@ const P: Record<string, string> = {
   alignVCenter: '<path d="M4 12h16"/><rect x="7" y="5.5" width="3.5" height="13" rx=".5"/><rect x="13.5" y="8" width="3.5" height="8" rx=".5"/>',
   alignBottom: '<path d="M4 20h16"/><rect x="7" y="6" width="3.5" height="11" rx=".5"/><rect x="13.5" y="10" width="3.5" height="7" rx=".5"/>',
   rotate: '<path d="M19 12a7 7 0 1 1-2-4.9"/><path d="M17.5 3.5V7.5H13.5"/>',
-  logo: '<rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" stroke="none"/><path d="M8 16.5 12 7l4 9.5" stroke="#fff" stroke-width="2"/><circle cx="12" cy="14" r="1.6" fill="#fff" stroke="none"/>',
+  logo: '<g transform="scale(.5) translate(-1.5 -1.5)" stroke-linecap="butt" stroke-linejoin="miter"><rect x="1.5" y="1.5" width="48" height="48" rx="8" fill="#000" stroke="none"/><path d="M7 13V7H13M23 7H29V13M29 23V29H23M13 29H7V23M16 7H20M29 16V20M16 29H20M7 16V20" stroke="#fff" stroke-width="3.4"/><circle cx="33.25" cy="33.25" r="12.5" fill="#fff" stroke="none"/><path d="M29 23V29H23" stroke="#000" stroke-width="3.4"/></g>',
   artboard: '<path d="M8 3v18M16 3v18M3 8h18M3 16h18"/>',
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',

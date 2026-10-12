@@ -1,7 +1,7 @@
 // Minimal offline cache: network-first, falling back to cache.
-const CACHE = 'iconic-v2';
+const CACHE = 'iconic-v3';
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', 'manifest.webmanifest', 'icon.svg'])));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', 'manifest.webmanifest', 'icon.svg', 'favicon.svg'])));
   self.skipWaiting();
 });
 self.addEventListener('activate', (e) =>
