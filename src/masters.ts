@@ -1,5 +1,6 @@
 // Masters & interpolation (like variable fonts / Material Symbols' weight axis):
 // draw an icon at two weights and generate everything in between.
+import { snapNode } from './audit';
 import { center, moveShape, toBezier, worldBox } from './geometry';
 import type { Artboard, BNode, Pt, Shape } from './model';
 import { inside, shapes } from './store';
@@ -76,4 +77,11 @@ function mix(x: Shape, y: Shape, t: number): Shape {
     };
   });
   return { ...a, ...paint, rotation: 0, nodes };
+}
+
+// In-between weights land on fractional coordinates; put every path point back
+// on the half-pixel grid so generated icons pass Audit without a Fix all.
+export function snapToGrid(s: Shape) {
+  if (s.type === 'boolean') s.children.forEach(snapToGrid);
+  else if (s.type === 'bezier') s.nodes.forEach(snapNode);
 }

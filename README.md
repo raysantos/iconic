@@ -21,7 +21,7 @@ Iconic is made for designing **Google Material icons**, on PC and phone. It has 
 
 ## Type-design tools (from FontLab)
 
-- **Weight masters:** draw an icon at two weights (Add bold master), check that they're compatible (same shapes, same point structure), preview any weight with a slider, and generate artboards at Material Symbols weights 100–700 (`name_wght300`, …)
+- **Weight masters:** draw an icon at two weights (Add bold master), check that they're compatible (same shapes, same point structure), preview any weight with a slider, and generate artboards at Material Symbols weights 100–700 (`name_wght300`, …). Generated points snap to the half-pixel grid, so they pass Audit as-is
 - **Tunni lines:** with Direct Selection, a dashed line joins each curve's handle ends — drag it to make the curve fuller or flatter, double-click to balance the handles
 - **Power Nudge:** moving or nudging points keeps neighbouring curves in proportion (toggle in Grid)
 - **Smart Corners:** live rounded corners on any sharp point of any path (R field), kept as a single editable point

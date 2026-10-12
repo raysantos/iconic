@@ -2,7 +2,7 @@
 // bloat icons, each with an automatic fix.
 import { removeAnchorSmooth } from './fit';
 import { cubicAt, segments, splitSegment } from './geometry';
-import type { BezierShape, Pt, Shape } from './model';
+import type { BezierShape, BNode, Pt, Shape } from './model';
 
 export type AuditKind = 'near-straight' | 'extremes' | 'tiny' | 'off-grid' | 'redundant';
 
@@ -30,6 +30,14 @@ const EPS = 0.01;
 const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const mid = (a: Pt, b: Pt): Pt => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
 const offGrid = (v: number) => Math.abs(v / GRID - Math.round(v / GRID)) * GRID > EPS;
+
+// Move a point onto the half-pixel grid, taking its handles along (the curve keeps its shape).
+export function snapNode(e: BNode) {
+  const snap = (v: number) => Math.round(v / GRID) * GRID;
+  const delta: Pt = [snap(e.p[0]) - e.p[0], snap(e.p[1]) - e.p[1]];
+  const mv = (v?: Pt): Pt | undefined => v && [v[0] + delta[0], v[1] + delta[1]];
+  Object.assign(e, { p: mv(e.p), in: mv(e.in), out: mv(e.out) });
+}
 
 export function auditShape(s: Shape): AuditIssue[] {
   if (s.type !== 'bezier' || s.hidden) return [];
@@ -98,13 +106,7 @@ export function auditShape(s: Shape): AuditIssue[] {
         kind: 'off-grid',
         at: node.p,
         message: `At ${node.p.map((v) => +v.toFixed(2)).join(', ')}`,
-        fix: (x) => {
-          const e = x.nodes[i];
-          const snap = (v: number) => Math.round(v / GRID) * GRID;
-          const delta: Pt = [snap(e.p[0]) - e.p[0], snap(e.p[1]) - e.p[1]];
-          const mv = (v?: Pt): Pt | undefined => v && [v[0] + delta[0], v[1] + delta[1]];
-          Object.assign(e, { p: mv(e.p), in: mv(e.in), out: mv(e.out) });
-        },
+        fix: (x) => snapNode(x.nodes[i]),
       });
     }
     // A sharp point in the middle of a straight line does nothing.

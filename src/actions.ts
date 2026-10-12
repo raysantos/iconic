@@ -1,7 +1,7 @@
 // Editing commands shared by keyboard shortcuts, menus and panels.
 import { bbox, center, moveShape, rotate, scaleKeepingRotation, scaleShape, toBezier, unionBox, worldBox } from './geometry';
 import { auditShape } from './audit';
-import { interpolate } from './masters';
+import { interpolate, snapToGrid } from './masters';
 import { BADGES, BADGE_BOX, resolveSource, type BadgeKey } from './components';
 import { BOOL_LABEL, ICON_STYLES, type Artboard, type BezierShape, type BoolOp, type BooleanShape, type Box, type InstanceShape, type IconStyle, type Pt, type Shape, type Style } from './model';
 import { activeArtboard, allShapes, artboardById, artboards, checkpoint, containerOf, commit, emit, inside, newArtboard, newId, nextArtboardName, savePrefs, selected, setActiveArtboard, shapes, state } from './store';
@@ -770,6 +770,7 @@ export function generateWeights(baseId: string, weights: number[]): Artboard[] {
       artboards().push(ab);
       for (const s of list.map(withNewIds)) {
         moveShape(s, structuredClone(s), x - base.x, y - base.y);
+        snapToGrid(s);
         shapes().push(s);
       }
       made.push(ab);

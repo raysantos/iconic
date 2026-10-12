@@ -8,7 +8,7 @@ import { exportIconFont } from './fontexport';
 import { toggleOverview } from './overview';
 import { BADGES, instanceName, resolveSource, type BadgeKey } from './components';
 import { el, renderShapes } from './svg';
-import { compatibility, interpolate, WEIGHTS } from './masters';
+import { compatibility, interpolate, snapToGrid, WEIGHTS } from './masters';
 import { icon } from './icons';
 import { toBezier } from './geometry';
 import { BOOL_LABEL, GENERAL_SIZES, ICON_SIZES, TYPE_LABEL, type BoolOp, type Cap, type InstanceShape, type IconStyle, type Join, type Shape, type Tool } from './model';
@@ -1412,6 +1412,7 @@ function weightSection(): Node {
   const value = h('span', { class: 'weight-value' });
   const draw = () => {
     const list = interpolate(base, master, (previewWeight - from) / (to - from)) ?? [];
+    list.forEach(snapToGrid); // same as Generate
     preview.replaceChildren(el('rect', { x: base.x, y: base.y, width: base.w, height: base.h, fill: '#fff' }), ...renderShapes(list));
     value.textContent = String(previewWeight);
   };
