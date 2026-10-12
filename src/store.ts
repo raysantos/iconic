@@ -93,8 +93,22 @@ function loadDoc(): Doc {
   // Older saves had a single fixed-size artboard.
   if (Array.isArray(data)) return { name: 'Untitled', artboards: [newArtboard('icon_1')], shapes: data };
   if (data && 'size' in data) return { name: data.name || 'Untitled', artboards: [newArtboard(data.name && data.name !== 'Untitled' ? snake(data.name) : 'icon_1', 0, 0, data.size)], shapes: data.shapes };
-  if (data && 'artboards' in data && data.artboards.length) return data;
+  if (data && 'artboards' in data && data.artboards.length) return migrateMasters(data);
   return { name: 'Untitled', iconStyle: 'outlined', artboards: [newArtboard('icon_1')], shapes: [] };
+}
+
+// Weight-only masters (0.8) become the first axis of the multi-axis masters.
+function migrateMasters(doc: Doc): Doc {
+  for (const ab of doc.artboards) {
+    const old = ab as Artboard & { axis?: { master: string; from: number; to: number } };
+    if (old.axis) {
+      ab.variations = { wght: old.axis.from, FILL: 0, masters: [{ id: old.axis.master, axis: 'wght', value: old.axis.to }] };
+      delete old.axis;
+    }
+    const g = ab.generated as unknown as { from: string; weight?: number } | undefined;
+    if (g?.weight !== undefined) ab.generated = { from: g.from, loc: { wght: g.weight, FILL: 0, opsz: ab.w } };
+  }
+  return doc;
 }
 
 function loadPrefs(): Prefs {

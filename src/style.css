@@ -1884,3 +1884,25 @@ button.swatch:focus-visible {
 .chip:disabled {
   opacity: 0.35;
 }
+
+/* Variations: one block per master */
+.master-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 14px 0 6px;
+}
+.master-head .d-subtitle {
+  margin: 0;
+}
+.master-adds {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.gen-axis {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}

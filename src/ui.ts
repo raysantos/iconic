@@ -8,10 +8,10 @@ import { exportIconFont } from './fontexport';
 import { toggleOverview } from './overview';
 import { BADGES, instanceName, resolveSource, type BadgeKey } from './components';
 import { el, renderShapes } from './svg';
-import { compatibility, interpolate, snapToGrid, WEIGHTS } from './masters';
+import { AXIS_LABEL, baseLoc, baseOf, combos, compatibility, FILLS, interpolate, locLabel, mastersOf, snapToGrid, WEIGHTS, type Master } from './masters';
 import { icon } from './icons';
 import { toBezier } from './geometry';
-import { BOOL_LABEL, GENERAL_SIZES, ICON_SIZES, TYPE_LABEL, type BoolOp, type Cap, type InstanceShape, type IconStyle, type Join, type Shape, type Tool } from './model';
+import { BOOL_LABEL, GENERAL_SIZES, ICON_SIZES, TYPE_LABEL, type AxisTag, type BoolOp, type Loc, type Cap, type InstanceShape, type IconStyle, type Join, type Shape, type Tool } from './model';
 import { installShortcuts, keyFor, pretty, SHORTCUTS } from './shortcuts';
 import { activeArtboard, allShapes, artboardById, artboards, byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, setActiveArtboard, shapes, state, subscribe, undo } from './store';
 
@@ -526,7 +526,7 @@ function renderDesign() {
   pendingDesign = false;
   const sel = selected();
   designBody.replaceChildren(
-    ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel), elementSection(sel), auditSection(sel)] : [artboardSection(), weightSection(), materialSection(), gridSection()]),
+    ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel), elementSection(sel), auditSection(sel)] : [artboardSection(), variationsSection(), materialSection(), gridSection()]),
     fillSection(sel),
     strokeSection(sel),
     section('Export', exportControls()),
@@ -1363,92 +1363,147 @@ function openVariants() {
   dlg.showModal();
 }
 
-// ---- Weight masters (variable-font style) ------------------------------------
+// ---- Masters (variable-font style: weight, fill, optical size) ---------------
 
-let previewWeight = 500;
-const pickedWeights = new Set<number>([100, 200, 300, 500, 600]);
+// Preview position and picked values to generate, per axis (kept while you work).
+const previewLoc: Partial<Loc> = { wght: 500, FILL: 1 };
+const picks: Record<AxisTag, Set<number>> = { wght: new Set(WEIGHTS), FILL: new Set(FILLS), opsz: new Set(ICON_SIZES) };
 
-function weightSection(): Node {
+function variationsSection(): Node {
   const ab = activeArtboard();
-  const base = ab.axis ? ab : ab.masterOf ? artboardById(ab.masterOf) : null;
-  const master = base?.axis ? artboardById(base.axis.master) : null;
+  const base = baseOf(ab);
+  const title = 'Variations';
+  if (ab.generated) return section(title, h('p', { class: 'd-hint', textContent: `Generated at ${locLabel(ab.generated.loc)}. Edit the masters and generate again.` }));
 
-  if (!base || !master || !base.axis) {
-    if (ab.generated) return section('Weight', h('p', { class: 'd-hint', textContent: `Generated at weight ${ab.generated.weight}. Edit the masters and generate again.` }));
-    const add = h('button', { class: 'secondary-btn', textContent: 'Add bold master' });
-    add.addEventListener('click', () => {
-      if (A.addMaster(ab.id)) {
-        fitAll();
-        toast('Bold master added — make it bolder, then generate weights');
-      }
-    });
-    return section('Weight', h('p', { class: 'd-hint', textContent: 'Draw this icon at two weights; Iconic makes every weight in between.' }), add);
-  }
-
-  const { from, to } = base.axis;
-  const problems = compatibility(base, master);
+  const ms = base ? mastersOf(base) : [];
+  const master = (axis: AxisTag) => ms.find((m) => m.axis === axis);
+  const owner = base ?? ab;
   const kids: Node[] = [];
-  kids.push(
-    h(
-      'div',
-      { class: 'd-grid' },
-      numField({ label: base.name.length > 10 ? 'Base' : base.name, title: `Weight of ${base.name}`, value: from, min: 1, step: 100, wide: false, onCommit: (v) => A.setAxisWeights(base.id, v, to) }),
-      numField({ label: 'Bold', title: `Weight of ${master.name}`, value: to, min: 1, step: 100, wide: false, onCommit: (v) => A.setAxisWeights(base.id, from, v) }),
-    ),
-  );
+  if (!ms.length) kids.push(h('p', { class: 'd-hint', textContent: 'Draw this icon once more per axis — bolder, filled, or at another size — and Iconic makes every combination in between.' }));
 
-  if (problems.length) {
+  // One block per master: what it is, whether it matches the base, and unlink.
+  const head = (axis: AxisTag, m: Master) => {
+    const x = h('button', { class: 'icon-btn', textContent: '×', title: `Unlink ${m.ab.name} (the artboard stays)` });
+    x.addEventListener('click', () => A.removeMaster(owner.id, m.ab.id));
+    return h('div', { class: 'master-head' }, h('h4', { class: 'd-subtitle', textContent: AXIS_LABEL[axis] }), x);
+  };
+  const status = (m: Master) => {
+    const problems = compatibility(owner, m.ab);
+    if (!problems.length) return [h('p', { class: 'd-hint ok', textContent: `✓ ${m.ab.name} is compatible` })];
     const ul = h('ul', { class: 'audit-list' });
     for (const p of problems.slice(0, 6)) ul.append(h('li', {}, h('span', { class: 'audit-dot' }), h('span', { class: 'audit-text', textContent: p })));
-    kids.push(h('p', { class: 'd-hint warn', textContent: 'Masters aren’t compatible yet:' }), ul);
-    return section('Weight', ...kids);
-  }
-  kids.push(h('p', { class: 'd-hint ok', textContent: '✓ Masters are compatible' }));
+    return [h('p', { class: 'd-hint warn', textContent: `${m.ab.name} isn’t compatible yet:` }), ul];
+  };
+  const at = baseLoc(owner);
 
-  // Live preview: slide through the weights.
+  const wm = master('wght');
+  if (wm) {
+    kids.push(
+      head('wght', wm),
+      h(
+        'div',
+        { class: 'd-grid' },
+        numField({ label: 'Base', title: `Weight of ${owner.name}`, value: at.wght, min: 1, step: 100, wide: false, onCommit: (v) => A.setWeight(owner.id, false, v) }),
+        numField({ label: 'Master', title: `Weight of ${wm.ab.name}`, value: wm.value, min: 1, step: 100, wide: false, onCommit: (v) => A.setWeight(owner.id, true, v) }),
+      ),
+      ...status(wm),
+    );
+  }
+  const fm = master('FILL');
+  if (fm) kids.push(head('FILL', fm), h('p', { class: 'd-hint', textContent: 'Outlined (fill 0) → filled (fill 1). Holes shrink to nothing in the filled master.' }), ...status(fm));
+  const om = master('opsz');
+  if (om) kids.push(head('opsz', om), h('p', { class: 'd-hint', textContent: `${at.opsz}dp → ${om.value}dp. Adjust line weights for the size; Iconic scales the rest.` }), ...status(om));
+
+  // Add the missing masters.
+  const added = (r: ReturnType<typeof A.addMaster>, msg: string) => {
+    if (!r) return;
+    fitAll();
+    toast(r.approx ? `${msg} — check ${r.approx} outline${r.approx > 1 ? 's' : ''} that could only be filled roughly` : msg);
+  };
+  const adds: Node[] = [];
+  if (!wm) {
+    const b = h('button', { class: 'secondary-btn', textContent: 'Add bold master' });
+    b.addEventListener('click', () => added(A.addMaster(owner.id, 'wght'), 'Bold master added — make it bolder, then generate'));
+    adds.push(b);
+  }
+  if (!fm) {
+    const b = h('button', { class: 'secondary-btn', textContent: 'Add filled master', title: 'Copies the icon with its holes shrunk to nothing' });
+    b.addEventListener('click', () => added(A.addMaster(owner.id, 'FILL'), 'Filled master added — tidy it up, then generate'));
+    adds.push(b);
+  }
+  if (!om) {
+    const chips = h('div', { class: 'chips' });
+    for (const n of (state.prefs.materialMode ? ICON_SIZES : GENERAL_SIZES).filter((n) => n !== owner.w)) {
+      const c = h('button', { class: 'chip', textContent: String(n), title: `Add a master at ${n}dp` });
+      c.addEventListener('click', () => added(A.addMaster(owner.id, 'opsz', n), `${n}dp master added — adjust its line weights, then generate`));
+      chips.append(c);
+    }
+    adds.push(labeled('Size master', chips, 'Add a master at another optical size'));
+  }
+  if (adds.length) kids.push(h('div', { class: 'master-adds' }, ...adds));
+
+  if (!base || !ms.length || ms.some((m) => compatibility(base, m.ab).length)) return section(title, ...kids);
+
+  // Live preview: one slider per axis.
   const preview = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   preview.setAttribute('class', 'weight-preview');
   preview.setAttribute('viewBox', `${base.x} ${base.y} ${base.w} ${base.h}`);
-  const value = h('span', { class: 'weight-value' });
+  const loc = (): Loc => ({ ...at, ...Object.fromEntries(ms.map((m) => [m.axis, previewLoc[m.axis] ?? m.value])) });
   const draw = () => {
-    const list = interpolate(base, master, (previewWeight - from) / (to - from)) ?? [];
+    const list = interpolate(base, loc()) ?? [];
     list.forEach(snapToGrid); // same as Generate
     preview.replaceChildren(el('rect', { x: base.x, y: base.y, width: base.w, height: base.h, fill: '#fff' }), ...renderShapes(list));
-    value.textContent = String(previewWeight);
   };
-  const slider = h('input', { type: 'range', min: '100', max: '900', step: '10', value: String(previewWeight), class: 'weight-slider' });
-  slider.setAttribute('aria-label', 'Preview weight');
-  slider.addEventListener('input', () => {
-    previewWeight = Number(slider.value);
-    draw();
-  });
-  draw();
-  kids.push(h('div', { class: 'weight-preview-row' }, preview, h('div', { class: 'weight-controls' }, h('span', { class: 'd-label', textContent: 'Preview' }), value, slider)));
-
-  // Weights to generate (Material Symbols' 100–700).
-  const chips = h('div', { class: 'chips' });
-  for (const w of WEIGHTS) {
-    const isMaster = w === from || w === to;
-    const on = pickedWeights.has(w) && !isMaster;
-    const c = h('button', { class: 'chip' + (on ? ' on' : ''), textContent: String(w), title: isMaster ? 'A master is drawn at this weight' : `Generate weight ${w}`, disabled: isMaster });
-    c.addEventListener('click', () => {
-      if (pickedWeights.has(w)) pickedWeights.delete(w);
-      else pickedWeights.add(w);
-      renderDesign();
+  const controls = h('div', { class: 'weight-controls' });
+  for (const m of ms) {
+    const [lo, hi, step] = m.axis === 'wght' ? [100, 900, 10] : m.axis === 'FILL' ? [0, 1, 0.05] : [Math.min(20, at.opsz, m.value), Math.max(48, at.opsz, m.value), 1];
+    const value = h('span', { class: 'weight-value' });
+    const slider = h('input', { type: 'range', min: String(lo), max: String(hi), step: String(step), value: String(loc()[m.axis]), class: 'weight-slider' });
+    slider.setAttribute('aria-label', `Preview ${AXIS_LABEL[m.axis].toLowerCase()}`);
+    const show = () => (value.textContent = m.axis === 'opsz' ? `${slider.value}dp` : slider.value);
+    slider.addEventListener('input', () => {
+      previewLoc[m.axis] = Number(slider.value);
+      show();
+      draw();
     });
-    chips.append(c);
+    show();
+    controls.append(h('span', { class: 'd-label', textContent: AXIS_LABEL[m.axis] }), value, slider);
   }
-  const chosen = WEIGHTS.filter((w) => pickedWeights.has(w) && w !== from && w !== to);
-  const gen = h('button', { class: 'secondary-btn', textContent: chosen.length ? `Generate ${chosen.length} weight${chosen.length > 1 ? 's' : ''}` : 'Pick weights to generate', disabled: !chosen.length });
+  draw();
+  kids.push(h('h4', { class: 'd-subtitle', textContent: 'Preview' }), h('div', { class: 'weight-preview-row' }, preview, controls));
+
+  // Values to generate per axis; every combination is made.
+  const chipRow = (axis: AxisTag, values: number[]) => {
+    const chips = h('div', { class: 'chips' });
+    for (const v of values) {
+      const on = picks[axis].has(v);
+      const c = h('button', { class: 'chip' + (on ? ' on' : ''), textContent: String(v), title: `${on ? 'Skip' : 'Include'} ${AXIS_LABEL[axis].toLowerCase()} ${v}` });
+      c.addEventListener('click', () => {
+        if (picks[axis].has(v)) picks[axis].delete(v);
+        else picks[axis].add(v);
+        renderDesign();
+      });
+      chips.append(c);
+    }
+    return h('div', { class: 'gen-axis' }, h('span', { class: 'd-label', textContent: AXIS_LABEL[axis] }), chips);
+  };
+  const rows: Node[] = [];
+  if (wm) rows.push(chipRow('wght', WEIGHTS));
+  if (fm) rows.push(chipRow('FILL', FILLS));
+  if (om) rows.push(chipRow('opsz', [...new Set([...(state.prefs.materialMode ? ICON_SIZES : GENERAL_SIZES), at.opsz, om.value])].sort((a, b) => a - b)));
+  const chosen = () => ({ wght: [...picks.wght], FILL: [...picks.FILL], opsz: [...picks.opsz] });
+  const n = combos(base, chosen()).length;
+  const gen = h('button', { class: 'secondary-btn', textContent: n ? `Generate ${n} icon${n > 1 ? 's' : ''}` : 'Pick values to generate', disabled: !n });
+  gen.title = 'Makes every combination of the picked values (replacing the last set)';
   gen.addEventListener('click', () => {
-    const made = A.generateWeights(base.id, chosen);
+    const made = A.generateVariations(base.id, chosen());
     if (made.length) {
       fitAll();
-      toast(`Generated ${made.length} weights — ${made.map((a) => a.name).join(', ')}`);
+      toast(`Generated ${made.length} icon${made.length > 1 ? 's' : ''}`);
     }
   });
-  kids.push(h('h4', { class: 'd-subtitle', textContent: 'Generate weights' }), chips, gen);
-  return section('Weight', ...kids);
+  kids.push(h('h4', { class: 'd-subtitle', textContent: 'Generate' }), ...rows, gen);
+  return section(title, ...kids);
 }
 
 // ---- Help, toast, panels -----------------------------------------------------

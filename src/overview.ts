@@ -3,8 +3,9 @@
 import { auditShape } from './audit';
 import { fitArtboard } from './canvas';
 import { center, intersects, worldBox } from './geometry';
+import { AXIS_LABEL, locSuffix } from './masters';
 import { SVG_NS } from './model';
-import { allShapes, artboards, emit, inside, setActiveArtboard, shapes, state, subscribe } from './store';
+import { allShapes, artboardById, artboards, emit, inside, setActiveArtboard, shapes, state, subscribe } from './store';
 import { el, renderShapes } from './svg';
 
 const viewport = document.querySelector<HTMLElement>('.viewport')!;
@@ -56,6 +57,7 @@ function render() {
       const on = shapes().filter((s) => inside(ab, center(worldBox(s))));
       const issues = on.flatMap((s) => allShapes([s])).reduce((n, s) => n + auditShape(s).length, 0);
       const linked = on.some((s) => s.type === 'instance' && !s.ref.startsWith('badge:'));
+      const master = ab.masterOf ? artboardById(ab.masterOf)?.variations?.masters.find((m) => m.id === ab.id) : undefined;
       const card = document.createElement('button');
       card.className = 'ov-card' + (ab.id === state.activeArtboard ? ' active' : '');
       card.title = `Go to ${ab.name}`;
@@ -63,9 +65,9 @@ function render() {
         ab.component ? '<span class="chip component">Component</span>' : '',
         linked ? '<span class="chip linked">Linked</span>' : '',
         issues ? `<span class="chip issues">${issues} issue${issues > 1 ? 's' : ''}</span>` : '',
-        ab.axis ? '<span class="chip linked">Master ' + ab.axis.from + '</span>' : '',
-        ab.masterOf ? '<span class="chip linked">Master</span>' : '',
-        ab.generated ? '<span class="chip">Weight ' + ab.generated.weight + '</span>' : '',
+        ab.variations ? '<span class="chip linked">Base</span>' : '',
+        master ? `<span class="chip linked">${AXIS_LABEL[master.axis]} master</span>` : '',
+        ab.generated ? `<span class="chip">${locSuffix(ab.generated.loc).replace(/_GRAD0/, '').replace(/_/g, ' ')}</span>` : '',
         !on.length ? '<span class="chip empty">Empty</span>' : '',
       ].join('');
       card.append(thumb(ab));

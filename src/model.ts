@@ -78,10 +78,16 @@ export interface Artboard {
   w: number;
   h: number;
   component?: boolean; // can be placed in other icons as a linked instance
-  axis?: { master: string; from: number; to: number }; // weight masters: this artboard is weight from, the master is weight to
-  masterOf?: string; // this artboard is the second master of another
-  generated?: { from: string; weight: number }; // made by Generate weights
+  // Masters (like Material Symbols' variable axes): on the base artboard, its own
+  // weight and fill, plus one extra master artboard per axis. Its optical size is its width.
+  variations?: { wght: number; FILL: number; masters: { id: string; axis: AxisTag; value: number }[] };
+  masterOf?: string; // this artboard is a master of another (the base)
+  generated?: { from: string; loc: Loc }; // made by Generate
 }
+
+// Material Symbols' variable axes: weight, fill and optical size.
+export type AxisTag = 'wght' | 'FILL' | 'opsz';
+export type Loc = Record<AxisTag, number>;
 
 export interface Doc {
   name: string;

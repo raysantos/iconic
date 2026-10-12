@@ -297,9 +297,18 @@ function artboardLabel(ab: Artboard): SVGGElement {
   g.dataset.artboard = ab.id;
   const fs = 11 * u();
   const text = el('text', { x: ab.x, y: ab.y - 6 * u(), 'font-size': fs });
-  text.textContent = ab.name;
+  // Like Figma, long names are cut short to fit (the active artboard shows its full name).
+  const fits = Math.max(1, Math.floor((ab.w + state.prefs.abGap) / u() / 6.5));
+  const short = ab.id !== state.activeArtboard && ab.name.length > fits;
+  const shown = short ? ab.name.slice(0, Math.max(1, fits - 1)) + '…' : ab.name;
+  text.textContent = shown;
+  if (short) {
+    const tip = el('title');
+    tip.textContent = ab.name;
+    text.append(tip);
+  }
   // Generous invisible hit area: text alone is hard to click.
-  g.append(el('rect', { x: ab.x, y: ab.y - 20 * u(), width: Math.max(ab.w, (ab.name.length * 6.5 + 8) * u()), height: 18 * u() }, 'label-hit'), text);
+  g.append(el('rect', { x: ab.x, y: ab.y - 20 * u(), width: Math.max(ab.w, (shown.length * 6.5 + 8) * u()), height: 18 * u() }, 'label-hit'), text);
   return g;
 }
 

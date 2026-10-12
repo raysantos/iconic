@@ -1,6 +1,7 @@
 // Material-style export: SVG, Android Vector Drawable, and PNG at Android densities.
 // "Google format" merges each icon into one filled path (strokes outlined), the
 // way Google ships Material icons; the working document stays editable.
+import { locSuffix } from './masters';
 import { intersects, round, worldBox } from './geometry';
 import type { Artboard, Doc, Shape } from './model';
 import { flattenArtboard, geometryPath, hasPathOps, shapeAreaPath, transformPath } from './pathops';
@@ -43,7 +44,14 @@ export const snakeName = (s: string) =>
     .replace(/^_+|_+$/g, '') || 'icon';
 
 // Material Symbols file naming (add_circle_24dp.svg) in Material mode; plain names otherwise.
-export const fileBase = (ab: Artboard) => (state.prefs.materialMode ? `${snakeName(ab.name)}_${round(Math.max(ab.w, ab.h))}dp` : snakeName(ab.name));
+export function fileBase(ab: Artboard) {
+  if (!state.prefs.materialMode) return snakeName(ab.name);
+  const dp = `${round(Math.max(ab.w, ab.h))}dp`;
+  // Generated variations keep Google's download order: home_20dp_FILL1_wght300_GRAD0_opsz20.
+  const sfx = ab.generated && locSuffix(ab.generated.loc);
+  if (sfx && ab.name.endsWith(`_${sfx}`)) return `${snakeName(ab.name.slice(0, -sfx.length - 1))}_${dp}_${sfx}`;
+  return `${snakeName(ab.name)}_${dp}`;
+}
 
 export const visibleOn = (shapes: Shape[], ab: Artboard) => shapes.filter((s) => !s.hidden && intersects(worldBox(s), ab));
 
