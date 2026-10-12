@@ -374,16 +374,18 @@ function transformBox(sel: Shape[], interactive: boolean): SVGGElement {
     if (h.length === 1 && tiny) continue; // edge handles crowd small boxes
     const [x, y] = pos[h];
     if (h.length === 2) {
-      // Rotate zone just outside each corner (mouse).
-      const ox = (h.includes('e') ? 1 : -1) * 10 * u();
-      const oy = (h.includes('s') ? 1 : -1) * 10 * u();
+      // Rotate zone hugging each corner on the diagonal (mouse).
+      const ox = (h.includes('e') ? 1 : -1) * 6 * u();
+      const oy = (h.includes('s') ? 1 : -1) * 6 * u();
       const zone = el('circle', { cx: x + ox, cy: y + oy, r: 10 * u() }, 'rot-zone');
       zone.dataset.rotate = '1';
       g.append(zone);
     }
     const r = 4 * u();
+    // Corner resize hits stay snug (mouse) so the rotate zone starts close to the box.
+    const hr = h.length === 2 && !coarse.matches ? 1.75 * r : 3 * r;
     const sq = el('rect', { x: x - r, y: y - r, width: r * 2, height: r * 2, 'stroke-width': u() }, 'handle-sq');
-    const hit = el('rect', { x: x - 3 * r, y: y - 3 * r, width: r * 6, height: r * 6 }, `handle-hit h-${h}`);
+    const hit = el('rect', { x: x - hr, y: y - hr, width: hr * 2, height: hr * 2 }, `handle-hit h-${h}`);
     hit.dataset.handle = h;
     g.append(sq, hit);
   }
