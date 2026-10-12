@@ -106,7 +106,8 @@ function migrateMasters(doc: Doc): Doc {
       delete old.axis;
     }
     const g = ab.generated as unknown as { from: string; weight?: number } | undefined;
-    if (g?.weight !== undefined) ab.generated = { from: g.from, loc: { wght: g.weight, FILL: 0, opsz: ab.w } };
+    if (g?.weight !== undefined) ab.generated = { from: g.from, loc: { wght: g.weight, FILL: 0, GRAD: 0, opsz: ab.w } };
+    if (ab.generated) ab.generated.loc.GRAD ??= 0; // 0.9 had no grade axis
   }
   return doc;
 }

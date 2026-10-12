@@ -67,7 +67,7 @@ function render() {
         issues ? `<span class="chip issues">${issues} issue${issues > 1 ? 's' : ''}</span>` : '',
         ab.variations ? '<span class="chip linked">Base</span>' : '',
         master ? `<span class="chip linked">${AXIS_LABEL[master.axis]} master</span>` : '',
-        ab.generated ? `<span class="chip">${locSuffix(ab.generated.loc).replace(/_GRAD0/, '').replace(/_/g, ' ')}</span>` : '',
+        ab.generated ? `<span class="chip">${locSuffix(ab.generated.loc).replace(/_GRAD0_/, '_').replace(/_/g, ' ')}</span>` : '',
         !on.length ? '<span class="chip empty">Empty</span>' : '',
       ].join('');
       card.append(thumb(ab));

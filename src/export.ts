@@ -47,7 +47,7 @@ export const snakeName = (s: string) =>
 export function fileBase(ab: Artboard) {
   if (!state.prefs.materialMode) return snakeName(ab.name);
   const dp = `${round(Math.max(ab.w, ab.h))}dp`;
-  // Generated variations keep Google's download order: home_20dp_FILL1_wght300_GRAD0_opsz20.
+  // Generated variations keep Google's download order: home_20dp_FILL1_wght300_GRAD200_opsz20.
   const sfx = ab.generated && locSuffix(ab.generated.loc);
   if (sfx && ab.name.endsWith(`_${sfx}`)) return `${snakeName(ab.name.slice(0, -sfx.length - 1))}_${dp}_${sfx}`;
   return `${snakeName(ab.name)}_${dp}`;

@@ -723,16 +723,17 @@ export function generateVariants(baseIds: string[], keys: BadgeKey[], circle: bo
 
 // ---- Masters (weight, fill, optical size) ------------------------------------
 
-const MASTER_NAME: Record<AxisTag, (v: number) => string> = { wght: (v) => `@${v}`, FILL: () => '@filled', opsz: (v) => `@${v}dp` };
+const MASTER_NAME: Record<AxisTag, (v: number) => string> = { wght: (v) => `@${v}`, FILL: () => '@filled', GRAD: (v) => `@grad${v}`, opsz: (v) => `@${v}dp` };
 
 // Copy the icon onto a new master artboard for one axis: bolder (to be drawn
-// bolder), filled (holes shrunk to nothing), or at another optical size (scaled).
+// bolder), filled (holes shrunk to nothing), graded (to be drawn a touch
+// heavier, same size), or at another optical size (scaled).
 // Returns the master and how many filled shapes are only approximate.
 export function addMaster(id: string, axis: AxisTag, size = 48): { master: Artboard; approx: number } | null {
   const base = artboardById(id);
   if (!base || base.generated || (base.masterOf && artboardById(base.masterOf))) return null;
   if (mastersOf(base).some((m) => m.axis === axis)) return null;
-  const value = axis === 'wght' ? (base.variations?.wght === 700 ? 100 : 700) : axis === 'FILL' ? 1 : size;
+  const value = axis === 'wght' ? (base.variations?.wght === 700 ? 100 : 700) : axis === 'FILL' ? 1 : axis === 'GRAD' ? 200 : size;
   const k = axis === 'opsz' ? size / base.w : 1;
   const [w, h] = [Math.round(base.w * k), Math.round(base.h * k)];
   const [x, y] = freeSlot(w, h);
@@ -768,18 +769,18 @@ export function removeMaster(baseId: string, masterId: string) {
   });
 }
 
-// The weight of the base (`master` = false) or of the weight master.
-export function setWeight(baseId: string, master: boolean, value: number) {
+// The weight or grade of the base (`master` = false) or of that axis's master.
+export function setAxisValue(baseId: string, axis: 'wght' | 'GRAD', master: boolean, value: number) {
   const base = artboardById(baseId);
   const v = base?.variations;
-  const m = v?.masters.find((x) => x.axis === 'wght');
-  if (!v || !m || !Number.isFinite(value) || value === (master ? v.wght : m.value)) return;
+  const m = v?.masters.find((x) => x.axis === axis);
+  if (!v || !m || !Number.isFinite(value) || value === (master ? m.value : (v[axis] ?? 0))) return;
   edit(() => {
     if (master) {
       m.value = value;
       const ab = artboardById(m.id);
-      if (ab) ab.name = ab.name.replace(/@\d+$/, `@${value}`);
-    } else v.wght = value;
+      if (ab) ab.name = ab.name.replace(axis === 'wght' ? /@\d+$/ : /@grad-?\d+$/, MASTER_NAME[axis](value));
+    } else v[axis] = value;
   });
 }
 

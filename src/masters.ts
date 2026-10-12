@@ -9,8 +9,10 @@ import { artboardById, inside, shapes } from './store';
 // Material Symbols' axes.
 export const WEIGHTS = [100, 200, 300, 400, 500, 600, 700];
 export const FILLS = [0, 1];
-export const AXES: AxisTag[] = ['wght', 'FILL', 'opsz'];
-export const AXIS_LABEL: Record<AxisTag, string> = { wght: 'Weight', FILL: 'Fill', opsz: 'Optical size' };
+// Grade: small weight changes that keep the icon's size (-25 for dark mode, 200 for emphasis).
+export const GRADES = [-25, 0, 200];
+export const AXES: AxisTag[] = ['wght', 'FILL', 'GRAD', 'opsz'];
+export const AXIS_LABEL: Record<AxisTag, string> = { wght: 'Weight', FILL: 'Fill', GRAD: 'Grade', opsz: 'Optical size' };
 
 export interface Master {
   ab: Artboard;
@@ -30,7 +32,7 @@ export function baseOf(ab: Artboard): Artboard | null {
 }
 
 // The base's own location; its optical size is its width.
-export const baseLoc = (base: Artboard): Loc => ({ wght: base.variations?.wght ?? 400, FILL: base.variations?.FILL ?? 0, opsz: base.w });
+export const baseLoc = (base: Artboard): Loc => ({ wght: base.variations?.wght ?? 400, FILL: base.variations?.FILL ?? 0, GRAD: base.variations?.GRAD ?? 0, opsz: base.w });
 
 // The base's masters that still exist (an optical-size master's value is its width).
 export function mastersOf(base: Artboard): Master[] {
@@ -41,8 +43,8 @@ export function mastersOf(base: Artboard): Master[] {
 }
 
 // Generated names follow Google's downloads: home_FILL1_wght300_GRAD0_opsz20.
-export const locSuffix = (l: Loc) => `FILL${+l.FILL.toFixed(2)}_wght${Math.round(l.wght)}_GRAD0_opsz${Math.round(l.opsz)}`;
-export const locLabel = (l: Loc) => `Weight ${Math.round(l.wght)} · Fill ${+l.FILL.toFixed(2)} · ${Math.round(l.opsz)}dp`;
+export const locSuffix = (l: Loc) => `FILL${+l.FILL.toFixed(2)}_wght${Math.round(l.wght)}_GRAD${Math.round(l.GRAD)}_opsz${Math.round(l.opsz)}`;
+export const locLabel = (l: Loc) => `Weight ${Math.round(l.wght)} · Fill ${+l.FILL.toFixed(2)} · Grade ${Math.round(l.GRAD)} · ${Math.round(l.opsz)}dp`;
 
 // ---- Compatibility --------------------------------------------------------
 
@@ -228,11 +230,12 @@ export function combos(base: Artboard, picks: Partial<Record<AxisTag, number[]>>
   const drawn = [at, ...ms.map((m) => ({ ...at, [m.axis]: m.value }))];
   const out: Loc[] = [];
   for (const opsz of values('opsz'))
-    for (const FILL of values('FILL'))
-      for (const wght of values('wght')) {
-        const l: Loc = { wght, FILL, opsz };
-        if (!drawn.some((d) => AXES.every((k) => d[k] === l[k]))) out.push(l);
-      }
+    for (const GRAD of values('GRAD'))
+      for (const FILL of values('FILL'))
+        for (const wght of values('wght')) {
+          const l: Loc = { wght, FILL, GRAD, opsz };
+          if (!drawn.some((d) => AXES.every((k) => d[k] === l[k]))) out.push(l);
+        }
   return out;
 }
 

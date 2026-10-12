@@ -21,7 +21,7 @@ Iconic is made for designing **Google Material icons**, on PC and phone. It has 
 
 ## Type-design tools (from FontLab)
 
-- **Variations (masters):** like Material Symbols' variable axes. Add a bold master (weight), a filled master (fill: holes shrink to nothing so it stays compatible) and an optical-size master (20/24/40/48dp), check that each matches the base, preview any mix with one slider per axis, and generate every combination of the picked weights, fills and sizes. Names follow Google's downloads (`home_FILL1_wght300_GRAD0_opsz20`, exported as `home_20dp_FILL1_…`), and generated points snap to the half-pixel grid so they pass Audit as-is
+- **Variations (masters):** like Material Symbols' variable axes. Add a bold master (weight), a filled master (fill: holes shrink to nothing so it stays compatible), a grade master (slightly heavier at the same size; -25 for dark mode, 200 for emphasis) and an optical-size master (20/24/40/48dp), check that each matches the base, preview any mix with one slider per axis, and generate every combination of the picked weights, fills, grades and sizes. Names follow Google's downloads (`home_FILL1_wght300_GRAD200_opsz20`, exported as `home_20dp_FILL1_…`), and generated points snap to the half-pixel grid so they pass Audit as-is
 - **Tunni lines:** with Direct Selection, a dashed line joins each curve's handle ends — drag it to make the curve fuller or flatter, double-click to balance the handles
 - **Power Nudge:** moving or nudging points keeps neighbouring curves in proportion (toggle in Grid)
 - **Smart Corners:** live rounded corners on any sharp point of any path (R field), kept as a single editable point

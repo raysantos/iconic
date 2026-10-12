@@ -8,7 +8,7 @@ import { exportIconFont } from './fontexport';
 import { toggleOverview } from './overview';
 import { BADGES, instanceName, resolveSource, type BadgeKey } from './components';
 import { el, renderShapes } from './svg';
-import { AXIS_LABEL, baseLoc, baseOf, combos, compatibility, FILLS, interpolate, locLabel, mastersOf, snapToGrid, WEIGHTS, type Master } from './masters';
+import { AXIS_LABEL, baseLoc, baseOf, combos, compatibility, FILLS, GRADES, interpolate, locLabel, mastersOf, snapToGrid, WEIGHTS, type Master } from './masters';
 import { icon } from './icons';
 import { toBezier } from './geometry';
 import { BOOL_LABEL, GENERAL_SIZES, ICON_SIZES, TYPE_LABEL, type AxisTag, type BoolOp, type Loc, type Cap, type InstanceShape, type IconStyle, type Join, type Shape, type Tool } from './model';
@@ -1366,7 +1366,7 @@ function openVariants() {
 
 // Preview position and picked values to generate, per axis (kept while you work).
 const previewLoc: Partial<Loc> = { wght: 500, FILL: 1 };
-const picks: Record<AxisTag, Set<number>> = { wght: new Set(WEIGHTS), FILL: new Set(FILLS), opsz: new Set(ICON_SIZES) };
+const picks: Record<AxisTag, Set<number>> = { wght: new Set(WEIGHTS), FILL: new Set(FILLS), GRAD: new Set(GRADES), opsz: new Set(ICON_SIZES) };
 
 function variationsSection(): Node {
   const ab = activeArtboard();
@@ -1378,7 +1378,7 @@ function variationsSection(): Node {
   const master = (axis: AxisTag) => ms.find((m) => m.axis === axis);
   const owner = base ?? ab;
   const kids: Node[] = [];
-  if (!ms.length) kids.push(h('p', { class: 'd-hint', textContent: 'Draw this icon once more per axis — bolder, filled, or at another size — and Iconic makes every combination in between.' }));
+  if (!ms.length) kids.push(h('p', { class: 'd-hint', textContent: 'Draw this icon once more per axis — bolder, filled, graded, or at another size — and Iconic makes every combination in between.' }));
 
   // One block per master: what it is, whether it matches the base, and unlink.
   const head = (axis: AxisTag, m: Master) => {
@@ -1402,14 +1402,28 @@ function variationsSection(): Node {
       h(
         'div',
         { class: 'd-grid' },
-        numField({ label: 'Base', title: `Weight of ${owner.name}`, value: at.wght, min: 1, step: 100, wide: false, onCommit: (v) => A.setWeight(owner.id, false, v) }),
-        numField({ label: 'Master', title: `Weight of ${wm.ab.name}`, value: wm.value, min: 1, step: 100, wide: false, onCommit: (v) => A.setWeight(owner.id, true, v) }),
+        numField({ label: 'Base', title: `Weight of ${owner.name}`, value: at.wght, min: 1, step: 100, wide: false, onCommit: (v) => A.setAxisValue(owner.id, 'wght', false, v) }),
+        numField({ label: 'Master', title: `Weight of ${wm.ab.name}`, value: wm.value, min: 1, step: 100, wide: false, onCommit: (v) => A.setAxisValue(owner.id, 'wght', true, v) }),
       ),
       ...status(wm),
     );
   }
   const fm = master('FILL');
   if (fm) kids.push(head('FILL', fm), h('p', { class: 'd-hint', textContent: 'Outlined (fill 0) → filled (fill 1). Holes shrink to nothing in the filled master.' }), ...status(fm));
+  const gm = master('GRAD');
+  if (gm) {
+    kids.push(
+      head('GRAD', gm),
+      h(
+        'div',
+        { class: 'd-grid' },
+        numField({ label: 'Base', title: `Grade of ${owner.name}`, value: at.GRAD, step: 25, wide: false, onCommit: (v) => A.setAxisValue(owner.id, 'GRAD', false, v) }),
+        numField({ label: 'Master', title: `Grade of ${gm.ab.name}`, value: gm.value, step: 25, wide: false, onCommit: (v) => A.setAxisValue(owner.id, 'GRAD', true, v) }),
+      ),
+      h('p', { class: 'd-hint', textContent: 'Thicken the lines a touch, inward, so the icon keeps its size.' }),
+      ...status(gm),
+    );
+  }
   const om = master('opsz');
   if (om) kids.push(head('opsz', om), h('p', { class: 'd-hint', textContent: `${at.opsz}dp → ${om.value}dp. Adjust line weights for the size; Iconic scales the rest.` }), ...status(om));
 
@@ -1428,6 +1442,11 @@ function variationsSection(): Node {
   if (!fm) {
     const b = h('button', { class: 'secondary-btn', textContent: 'Add filled master', title: 'Copies the icon with its holes shrunk to nothing' });
     b.addEventListener('click', () => added(A.addMaster(owner.id, 'FILL'), 'Filled master added — tidy it up, then generate'));
+    adds.push(b);
+  }
+  if (!gm) {
+    const b = h('button', { class: 'secondary-btn', textContent: 'Add grade master', title: 'A slightly heavier version for emphasis; -25 for dark mode comes for free' });
+    b.addEventListener('click', () => added(A.addMaster(owner.id, 'GRAD'), 'Grade master added — thicken the lines a touch, then generate'));
     adds.push(b);
   }
   if (!om) {
@@ -1455,7 +1474,7 @@ function variationsSection(): Node {
   };
   const controls = h('div', { class: 'weight-controls' });
   for (const m of ms) {
-    const [lo, hi, step] = m.axis === 'wght' ? [100, 900, 10] : m.axis === 'FILL' ? [0, 1, 0.05] : [Math.min(20, at.opsz, m.value), Math.max(48, at.opsz, m.value), 1];
+    const [lo, hi, step] = m.axis === 'wght' ? [100, 900, 10] : m.axis === 'FILL' ? [0, 1, 0.05] : m.axis === 'GRAD' ? [Math.min(-25, at.GRAD, m.value), Math.max(200, at.GRAD, m.value), 5] : [Math.min(20, at.opsz, m.value), Math.max(48, at.opsz, m.value), 1];
     const value = h('span', { class: 'weight-value' });
     const slider = h('input', { type: 'range', min: String(lo), max: String(hi), step: String(step), value: String(loc()[m.axis]), class: 'weight-slider' });
     slider.setAttribute('aria-label', `Preview ${AXIS_LABEL[m.axis].toLowerCase()}`);
@@ -1489,8 +1508,9 @@ function variationsSection(): Node {
   const rows: Node[] = [];
   if (wm) rows.push(chipRow('wght', WEIGHTS));
   if (fm) rows.push(chipRow('FILL', FILLS));
+  if (gm) rows.push(chipRow('GRAD', [...new Set([...GRADES, at.GRAD, gm.value])].sort((a, b) => a - b)));
   if (om) rows.push(chipRow('opsz', [...new Set([...(state.prefs.materialMode ? ICON_SIZES : GENERAL_SIZES), at.opsz, om.value])].sort((a, b) => a - b)));
-  const chosen = () => ({ wght: [...picks.wght], FILL: [...picks.FILL], opsz: [...picks.opsz] });
+  const chosen = () => ({ wght: [...picks.wght], FILL: [...picks.FILL], GRAD: [...picks.GRAD], opsz: [...picks.opsz] });
   const n = combos(base, chosen()).length;
   const gen = h('button', { class: 'secondary-btn', textContent: n ? `Generate ${n} icon${n > 1 ? 's' : ''}` : 'Pick values to generate', disabled: !n });
   gen.title = 'Makes every combination of the picked values (replacing the last set)';

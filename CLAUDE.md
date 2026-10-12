@@ -36,7 +36,7 @@ Ray is a designer: explain things in plain language, not jargon.
   - components and instances (including nested badges, bare and circle) stay linked
   - knockout gaps are live
 - **Google-format export:** one merged filled path on the 960 grid (`viewBox="0 -960 960 960"`), with a pixel-diff check and warnings. What you see while editing must match what exports.
-- **Type-design tools (from FontLab):** masters and interpolation (weight, fill, optical size), Tunni lines, Power Nudge, Smart Corners, Audit, Overview, icon-font export.
+- **Type-design tools (from FontLab):** masters and interpolation (weight, fill, grade, optical size), Tunni lines, Power Nudge, Smart Corners, Audit, Overview, icon-font export.
 - **Design details Ray cares about:**
   - consistent icon stroke weights (the style icons all use stroke-width 3)
   - no cramped or overflowing panel rows
@@ -62,7 +62,7 @@ Source map:
 - `src/export.ts`: SVG, Android XML and PNG export
 - `src/fontexport.ts`: icon-font export
 - `src/components.ts`: badges and instances
-- `src/masters.ts`: masters and interpolation (weight, fill, optical size)
+- `src/masters.ts`: masters and interpolation (weight, fill, grade, optical size)
 - `src/audit.ts`: audit checks
 - `src/curvetools.ts`: Tunni lines and Power Nudge
 - `src/fit.ts`: curve fitting
