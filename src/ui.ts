@@ -529,7 +529,6 @@ function renderDesign() {
     ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel), elementSection(sel), auditSection(sel)] : [artboardSection(), variationsSection(), materialSection(), gridSection()]),
     fillSection(sel),
     strokeSection(sel),
-    section('Export', exportControls()),
   );
 }
 designBody.addEventListener('focusout', () => setTimeout(() => pendingDesign && renderDesign()));
