@@ -25,7 +25,7 @@ Iconic is made for designing **Google Material icons**, on PC and phone. It has 
 - **Tunni lines:** with Direct Selection, a dashed line joins each curve's handle ends — drag it to make the curve fuller or flatter, double-click to balance the handles
 - **Power Nudge:** moving or nudging points keeps neighbouring curves in proportion (toggle in Grid)
 - **Smart Corners:** live rounded corners on any sharp point of any path (R field), kept as a single editable point
-- **Audit:** flags almost-straight lines, missing extreme points, tiny segments, off-grid points and redundant points, with Fix / Fix all
+- **Audit:** flags almost-straight lines, missing extreme points, tiny segments, off-grid points and redundant points, with Fix / Fix all. Hover or tap an issue to spotlight it on the canvas
 - **Overview** (`Ctrl+Shift+O`): every icon in a grid with name, size and status (component, linked, master, weight, audit issues)
 - **Icon font export:** OTF + WOFF with a ligature per icon name (type `home` → icon), Private Use Area codepoints, CSS, a codepoints file and a demo page
 

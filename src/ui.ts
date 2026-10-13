@@ -1,6 +1,6 @@
 // Figma-style chrome: top bar, Layers panel, Design panel, menus, dialogs.
 import * as A from './actions';
-import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setCursor, setHover, setSpaceHeld, viewState, zoomAt, zoomTo } from './canvas';
+import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setAuditFocus, setCursor, setHover, setSpaceHeld, viewState, zoomAt, zoomTo } from './canvas';
 import { installTablet, setTabletMode } from './tablet';
 import { installImport, openImport, pasteFromMenu } from './importer';
 import { checkSinglePath, DENSITIES, exportArtboards, fileBase, type ExportFormat, type ExportIssue } from './export';
@@ -13,7 +13,7 @@ import { el, renderShapes } from './svg';
 import { AXIS_LABEL, baseLoc, baseOf, combos, compatibility, FILLS, GRADES, interpolate, locLabel, mastersOf, snapToGrid, WEIGHTS, type Master } from './masters';
 import { icon } from './icons';
 import { toBezier } from './geometry';
-import { BOOL_LABEL, GENERAL_SIZES, ICON_SIZES, TYPE_LABEL, type AxisTag, type BoolOp, type Loc, type Cap, type InstanceShape, type IconStyle, type Join, type Shape, type Tool } from './model';
+import { BOOL_LABEL, GENERAL_SIZES, ICON_SIZES, TYPE_LABEL, type AxisTag, type BoolOp, type Loc, type Cap, type InstanceShape, type IconStyle, type Join, type Pt, type Shape, type Tool } from './model';
 import { installShortcuts, keyFor, pretty, SHORTCUTS } from './shortcuts';
 import { activeArtboard, allShapes, artboardById, artboards, byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, setActiveArtboard, shapes, state, subscribe, undo } from './store';
 
@@ -548,6 +548,10 @@ function renderDesign() {
   }
   pendingDesign = false;
   const sel = selected();
+  if (!sel.length) {
+    auditPinned = null;
+    setAuditFocus(null);
+  }
   designBody.replaceChildren(
     ...(sel.length ? [alignSection(), booleanSection(sel), instanceSection(sel), layoutSection(sel), elementSection(sel), auditSection(sel)] : [artboardSection(), variationsSection(), materialSection(), gridSection()]),
     fillSection(sel),
@@ -707,18 +711,49 @@ function elementSection(sel: Shape[]): Node {
 }
 
 // Geometry problems in the selected paths, each with a fix.
+let auditShowAll = false; // survives re-renders so a Fix doesn't collapse the list
+let auditPinned: Pt | null = null; // the issue tapped in the list stays spotlit on the canvas
+const samePt = (a: Pt, b: Pt) => a[0] === b[0] && a[1] === b[1];
 function auditSection(sel: Shape[]): Node {
-  if (!state.prefs.audit) return h('span');
-  const paths = sel.flatMap((s) => allShapes([s]));
+  const paths = state.prefs.audit ? sel.flatMap((s) => allShapes([s])) : [];
   const issues = paths.flatMap((s) => auditShape(s).map((issue, index) => ({ issue, index })));
+  // Drop the spotlight once its issue is gone (fixed, or the selection changed).
+  if (auditPinned && !issues.some((x) => samePt(x.issue.at, auditPinned!))) auditPinned = null;
+  setAuditFocus(auditPinned);
   if (!issues.length) return h('span');
   const list = h('ul', { class: 'audit-list' });
-  for (const { issue, index } of issues.slice(0, 8)) {
-    const fix = h('button', { class: 'icon-btn audit-fix', textContent: 'Fix', title: 'Apply the automatic fix' });
-    fix.addEventListener('click', () => A.fixAuditIssue(issue.sid, index));
-    list.append(h('li', {}, h('span', { class: 'audit-dot' }), h('span', { class: 'audit-text' }, h('strong', { textContent: AUDIT_LABEL[issue.kind] }), h('span', { textContent: issue.message })), fix));
-  }
-  if (issues.length > 8) list.append(h('li', { class: 'd-hint', textContent: `+ ${issues.length - 8} more` }));
+  const fill = () => {
+    list.replaceChildren();
+    for (const { issue, index } of auditShowAll ? issues : issues.slice(0, 8)) {
+      const fix = h('button', { class: 'icon-btn audit-fix', textContent: 'Fix', title: 'Apply the automatic fix' });
+      fix.addEventListener('click', (e) => {
+        e.stopPropagation();
+        auditPinned = null;
+        setAuditFocus(null);
+        A.fixAuditIssue(issue.sid, index);
+      });
+      const pinned = !!auditPinned && samePt(auditPinned, issue.at);
+      const row = h('li', { class: 'audit-item' + (pinned ? ' on' : ''), title: 'Show on canvas' }, h('span', { class: 'audit-dot' }), h('span', { class: 'audit-text' }, h('strong', { textContent: AUDIT_LABEL[issue.kind] }), h('span', { textContent: issue.message })), fix);
+      // Pen hover previews it; a tap pins it (tap again to let go).
+      row.addEventListener('pointerenter', () => setAuditFocus(issue.at));
+      row.addEventListener('pointerleave', () => setAuditFocus(auditPinned));
+      row.addEventListener('click', () => {
+        auditPinned = pinned ? null : issue.at;
+        setAuditFocus(auditPinned);
+        fill();
+      });
+      list.append(row);
+    }
+    if (issues.length > 8) {
+      const more = h('button', { class: 'audit-more', textContent: auditShowAll ? 'Show less' : `+ ${issues.length - 8} more` });
+      more.addEventListener('click', () => {
+        auditShowAll = !auditShowAll;
+        fill();
+      });
+      list.append(h('li', {}, more));
+    }
+  };
+  fill();
   const all = h('button', { class: 'secondary-btn', textContent: `Fix all (${issues.length})` });
   all.addEventListener('click', () => A.fixAllAudit([...new Set(issues.map((x) => x.issue.sid))]));
   return section(`Audit · ${issues.length}`, list, all);

@@ -1790,6 +1790,43 @@ button.swatch:focus-visible {
   pointer-events: all;
   cursor: pointer;
 }
+#canvas .overlay .audit-focus,
+#canvas .overlay .audit-focus-cross {
+  fill: none;
+  stroke: #ff9800;
+  pointer-events: none;
+}
+#canvas .overlay .audit-focus {
+  fill: rgb(255 152 0 / 0.12);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: audit-pulse 1.2s ease-in-out infinite;
+}
+#canvas .overlay .audit-focus-dot {
+  fill: #ff9800;
+  pointer-events: none;
+}
+@keyframes audit-pulse {
+  50% {
+    transform: scale(0.7);
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #canvas .overlay .audit-focus {
+    animation: none;
+  }
+}
+.audit-list li.audit-item {
+  margin: 0 -6px;
+  padding: 0 0 0 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.audit-list li.audit-item:hover,
+.audit-list li.audit-item.on {
+  background: rgb(255 152 0 / 0.14);
+}
 .audit-list {
   list-style: none;
   margin: 0 0 4px;
@@ -1819,6 +1856,17 @@ button.swatch:focus-visible {
 }
 .audit-text span {
   color: var(--ui-text-2);
+}
+.audit-more {
+  min-height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
 }
 .icon-btn.audit-fix {
   width: auto;

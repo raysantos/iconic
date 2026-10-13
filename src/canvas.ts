@@ -184,6 +184,14 @@ export function setHover(id: string | null) {
   render();
 }
 
+// Pointing at (or tapping) an issue in the Audit panel spotlights it here.
+let auditFocus: Pt | null = null;
+export function setAuditFocus(at: Pt | null) {
+  if (at === auditFocus || (at && auditFocus && at[0] === auditFocus[0] && at[1] === auditFocus[1])) return;
+  auditFocus = at;
+  render();
+}
+
 // Tools that edit points show anchors instead of the bounding box.
 const pointTools = new Set(['direct', 'addAnchor', 'deleteAnchor', 'convertAnchor']);
 
@@ -256,6 +264,16 @@ export function render() {
         m.append(t);
         overlay.append(m);
       }
+    }
+    if (auditFocus) {
+      const [x, y] = auditFocus;
+      const r = 14 * u();
+      const arm = 10 * u();
+      overlay.append(
+        el('circle', { cx: x, cy: y, r, 'stroke-width': 2 * u() }, 'audit-focus'),
+        el('path', { d: `M${x - r - arm} ${y}h${arm}M${x + r} ${y}h${arm}M${x} ${y - r - arm}v${arm}M${x} ${y + r}v${arm}`, 'stroke-width': 2 * u() }, 'audit-focus-cross'),
+        el('circle', { cx: x, cy: y, r: 2.5 * u() }, 'audit-focus-dot'),
+      );
     }
   }
   if (guides.length) overlay.append(guideOverlay());
