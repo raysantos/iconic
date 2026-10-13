@@ -926,6 +926,9 @@ body.scrubbing * {
   color: var(--ui-text);
   box-shadow: 0 24px 64px rgb(0 0 0 / 0.35);
 }
+.help.about {
+  width: min(420px, calc(100vw - 32px));
+}
 .help::backdrop {
   background: rgb(0 0 0 / 0.4);
 }
@@ -986,6 +989,20 @@ body.scrubbing * {
   margin: 0;
   padding: 0 20px 18px;
   color: var(--ui-text-2);
+}
+.help-note a {
+  color: inherit;
+}
+
+.about-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+}
+.about-body p {
+  margin: 0;
+  line-height: 1.5;
 }
 
 /* ---- Tablet mode: on-screen keys and the pen's tool wheel ---------------------- */

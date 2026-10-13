@@ -247,6 +247,7 @@ function openMenu(anchor: HTMLElement, which: string) {
         { sep: true },
         { label: 'Export…', keys: 'Ctrl+Shift+E', run: openExport },
         { label: 'Keyboard shortcuts', keys: 'Ctrl+/', run: openHelp },
+        { label: 'About Iconic', run: openAbout },
       ]),
     );
   } else if (which === 'zoom') {
@@ -1589,6 +1590,7 @@ const helpDialog = q<HTMLDialogElement>('#helpDialog');
 
 function openHelp() {
   const groups = [...new Set(SHORTCUTS.map((s) => s.group))];
+  helpDialog.classList.remove('about');
   helpDialog.innerHTML = `
     <div class="help-head"><h2>Keyboard shortcuts</h2><span class="help-sub">Adobe Illustrator layout${navigator.platform.includes('Mac') ? '' : ' · Ctrl = ⌘ on Mac'}</span><button class="sheet-close" value="close" aria-label="Close">×</button></div>
     <div class="help-cols">${groups
@@ -1610,6 +1612,16 @@ function openHelp() {
   helpDialog.showModal();
 }
 helpDialog.addEventListener('click', (e) => e.target === helpDialog && helpDialog.close());
+
+function openAbout() {
+  helpDialog.classList.add('about');
+  helpDialog.innerHTML = `
+    <div class="help-head"><h2>Iconic</h2><span class="help-sub">Version ${__APP_VERSION__}</span><button class="sheet-close" value="close" aria-label="Close">×</button></div>
+    <div class="about-body">${icon('logo', 48)}<p>A vector icon editor for PC, phone and pen tablet.<br>Made by Raysan Designs.</p></div>
+    <p class="help-note"><a href="https://github.com/raysantos/iconic" target="_blank" rel="noopener">Source on GitHub</a></p>`;
+  q('.sheet-close', helpDialog).addEventListener('click', () => helpDialog.close());
+  helpDialog.showModal();
+}
 
 const toastEl = q('#toast');
 let toastTimer = 0;
