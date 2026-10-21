@@ -2,18 +2,9 @@
 // Automatically Fitting Digitized Curves", Graphics Gems, 1990).
 import { cubicAt, segments } from './geometry';
 import type { BNode, BezierShape, Pt } from './model';
+import { add, dot, len, mul, sub, unit } from './vec';
 
 type Cubic = [Pt, Pt, Pt, Pt];
-
-const add = (a: Pt, b: Pt): Pt => [a[0] + b[0], a[1] + b[1]];
-const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
-const mul = (a: Pt, k: number): Pt => [a[0] * k, a[1] * k];
-const dot = (a: Pt, b: Pt) => a[0] * b[0] + a[1] * b[1];
-const len = (a: Pt) => Math.hypot(a[0], a[1]);
-const unit = (a: Pt): Pt => {
-  const l = len(a) || 1;
-  return [a[0] / l, a[1] / l];
-};
 
 // Smooth Bezier segments through freehand points. `tolerance` is in canvas units.
 export function fitCurve(points: Pt[], tolerance: number): Cubic[] {

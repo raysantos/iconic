@@ -1,6 +1,7 @@
 import type { BNode, BezierShape, Box, Pt, Shape } from './model';
 import { instanceBox } from './components';
 import { booleanResult } from './pathops';
+import { dist, lerp, same, sub, unit } from './vec';
 
 export const round = (v: number) => Math.round(v * 100) / 100;
 
@@ -140,8 +141,8 @@ export function expandCorners(nodes: BNode[], closed: boolean): BNode[] {
     const prev = nodes[(i - 1 + n) % n];
     const next = nodes[(i + 1) % n];
     // Directions leaving the corner along each neighbouring segment.
-    const v1 = unitOf(sub(prev.out ?? prev.p, node.p));
-    const v2 = unitOf(sub(next.in ?? next.p, node.p));
+    const v1 = unit(sub(prev.out ?? prev.p, node.p));
+    const v2 = unit(sub(next.in ?? next.p, node.p));
     const cos = Math.max(-1, Math.min(1, v1[0] * v2[0] + v1[1] * v2[1]));
     const theta = Math.acos(cos); // angle between the legs
     if (theta < 1e-3 || Math.PI - theta < 1e-3) return void out.push(node); // no real corner
@@ -155,13 +156,6 @@ export function expandCorners(nodes: BNode[], closed: boolean): BNode[] {
   });
   return out;
 }
-
-const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
-const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-const unitOf = (v: Pt): Pt => {
-  const l = Math.hypot(v[0], v[1]) || 1;
-  return [v[0] / l, v[1] / l];
-};
 
 export function bezierToPath(raw: BNode[], closed: boolean) {
   const nodes = expandCorners(raw, closed);
@@ -208,8 +202,6 @@ export function cubicAt(a: Pt, b: Pt, c: Pt, d: Pt, t: number): Pt {
   return [0, 1].map((i) => w[0] * a[i] + w[1] * b[i] + w[2] * c[i] + w[3] * d[i]) as Pt;
 }
 
-const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-const same = (a: Pt, b: Pt) => a[0] === b[0] && a[1] === b[1];
 
 // Closest point on the path: { segment index, t, distance }.
 export function nearestOnPath(s: BezierShape, p: Pt) {

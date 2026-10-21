@@ -3,6 +3,7 @@
 import { removeAnchorSmooth } from './fit';
 import { cubicAt, segments, splitSegment } from './geometry';
 import type { BezierShape, BNode, Pt, Shape } from './model';
+import { dist } from './vec';
 
 export type AuditKind = 'near-straight' | 'extremes' | 'tiny' | 'off-grid' | 'redundant';
 
@@ -27,7 +28,6 @@ const TINY = 0.5; // px
 const GRID = 0.5; // points should sit on the half-pixel grid
 const EPS = 0.01;
 
-const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const mid = (a: Pt, b: Pt): Pt => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
 const offGrid = (v: number) => Math.abs(v / GRID - Math.round(v / GRID)) * GRID > EPS;
 

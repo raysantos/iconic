@@ -1,15 +1,6 @@
 // Type-design curve tools (as in FontLab): Tunni lines and Power Nudge.
 import type { BNode, Pt } from './model';
-
-const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
-const add = (a: Pt, b: Pt): Pt => [a[0] + b[0], a[1] + b[1]];
-const mul = (a: Pt, k: number): Pt => [a[0] * k, a[1] * k];
-const dot = (a: Pt, b: Pt) => a[0] * b[0] + a[1] * b[1];
-const len = (a: Pt) => Math.hypot(a[0], a[1]);
-const unit = (a: Pt): Pt => {
-  const l = len(a) || 1;
-  return [a[0] / l, a[1] / l];
-};
+import { add, dot, len, mul, sub, unit } from './vec';
 
 // A segment's points: start a, handles b (a.out) and c (d.in), end d.
 export function segmentAt(nodes: BNode[], seg: number) {
