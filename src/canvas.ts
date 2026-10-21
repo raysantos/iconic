@@ -704,7 +704,7 @@ svg.addEventListener('pointerdown', (e) => {
     const sid = nodeEl.dataset.sid;
     const i = Number(nodeEl.dataset.node);
     const part = nodeEl.dataset.part as NodePart;
-    if (tool === 'direct' && part === 'p') return startAnchorDrag(sid, i, p, shiftOn(e));
+    if (tool === 'direct' && part === 'p') return startAnchorDrag(sid, i, shiftOn(e));
     checkpoint();
     const s = ensureBezier(sid);
     if (tool === 'deleteAnchor' && part === 'p') {
@@ -1098,7 +1098,6 @@ svg.addEventListener(
   { passive: false },
 );
 
-// Double-click a point with the Direct Selection tool: corner <-> smooth.
 // ---- Inside boolean groups ---------------------------------------------------
 
 // A group is "open" while something inside it is selected (like Figma).
@@ -1404,7 +1403,7 @@ function penDrag(p: Pt, alt: boolean, keepIn = false) {
 const isAnchorSel = (sid: string, i: number) => state.anchors.some((a) => a.sid === sid && a.i === i);
 
 // Click selects one point (Shift toggles); dragging moves every selected point.
-function startAnchorDrag(sid: string, i: number, p: Pt, shift: boolean) {
+function startAnchorDrag(sid: string, i: number, shift: boolean) {
   if (shift) {
     state.anchors = isAnchorSel(sid, i) ? state.anchors.filter((a) => !(a.sid === sid && a.i === i)) : [...state.anchors, { sid, i }];
     if (!isAnchorSel(sid, i)) return emit();

@@ -565,16 +565,6 @@ export function renameArtboard(id: string, name: string) {
   edit(() => (ab.name = clean));
 }
 
-export function moveArtboardInList(id: string, to: number) {
-  const list = artboards();
-  const from = list.findIndex((a) => a.id === id);
-  if (from < 0 || from === to) return;
-  edit(() => {
-    const [ab] = list.splice(from, 1);
-    list.splice(to > from ? to - 1 : to, 0, ab);
-  });
-}
-
 // X/Y move the artboard with its artwork; W/H resize it from the top-left.
 export function setArtboardGeometry(field: 'x' | 'y' | 'w' | 'h', value: number, opts: EditOpts = {}) {
   const ab = activeArtboard();

@@ -1,6 +1,6 @@
 // Figma-style chrome: top bar, Layers panel, Design panel, menus, dialogs.
 import * as A from './actions';
-import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setAuditFocus, setCursor, setHover, setSpaceHeld, viewState, zoomAt, zoomTo } from './canvas';
+import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, onViewChange, setAuditFocus, setCursor, setHover, setSpaceHeld, viewState, zoomAt } from './canvas';
 import { installTablet, setTabletMode } from './tablet';
 import { installImport, openImport, pasteFromMenu } from './importer';
 import { checkSinglePath, DENSITIES, exportArtboards, fileBase, type ExportFormat, type ExportIssue } from './export';
@@ -14,7 +14,7 @@ import { AXIS_LABEL, baseLoc, baseOf, combos, compatibility, FILLS, GRADES, inte
 import { icon } from './icons';
 import { toBezier } from './geometry';
 import { BOOL_LABEL, GENERAL_SIZES, ICON_SIZES, TYPE_LABEL, type AxisTag, type BoolOp, type Loc, type Cap, type InstanceShape, type IconStyle, type Join, type Pt, type Shape, type Tool } from './model';
-import { installShortcuts, keyFor, pretty, SHORTCUTS } from './shortcuts';
+import { installShortcuts, isMac, keyFor, pretty, SHORTCUTS } from './shortcuts';
 import { activeArtboard, allShapes, artboardById, artboards, byId, checkpoint, commit, discardIfUnchanged, emit, redo, savePrefs, selected, setActiveArtboard, shapes, state, subscribe, undo } from './store';
 
 const q = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
@@ -1606,7 +1606,7 @@ function openHelp() {
   const groups = [...new Set(SHORTCUTS.map((s) => s.group))];
   helpDialog.classList.remove('about');
   helpDialog.innerHTML = `
-    <div class="help-head"><h2>Keyboard shortcuts</h2><span class="help-sub">Adobe Illustrator layout${navigator.platform.includes('Mac') ? '' : ' · Ctrl = ⌘ on Mac'}</span><button class="sheet-close" value="close" aria-label="Close">×</button></div>
+    <div class="help-head"><h2>Keyboard shortcuts</h2><span class="help-sub">Adobe Illustrator layout${isMac ? '' : ' · Ctrl = ⌘ on Mac'}</span><button class="sheet-close" value="close" aria-label="Close">×</button></div>
     <div class="help-cols">${groups
       .map(
         (g) => `<section><h3>${g}</h3><dl>${SHORTCUTS.filter((s) => s.group === g)

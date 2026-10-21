@@ -21,9 +21,6 @@ export interface ImportResult {
   skipped: string[]; // element kinds that can't be imported (text, images…)
 }
 
-// Does this text look like SVG markup?
-export const looksLikeSvg = (text: string) => /<svg[\s>]/i.test(text);
-
 // Pull the SVG out of whatever was copied: raw SVG code or a web page's HTML.
 export function extractSvg(text: string): string | null {
   const m = text.match(/<svg[\s>][\s\S]*<\/svg>/i);

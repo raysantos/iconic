@@ -225,11 +225,6 @@ export const byId = (id: string) => allShapes().find((s) => s.id === id);
 export const selected = () => allShapes().filter((s) => state.selection.includes(s.id));
 export const isSelected = (id: string) => state.selection.includes(id);
 
-export function select(ids: string[]) {
-  state.selection = ids;
-  emit('full');
-}
-
 // ---- Artboards -----------------------------------------------------------
 
 export const artboards = () => state.doc.artboards;

@@ -26,8 +26,6 @@ viewport.append(panel);
 const grid = panel.querySelector<HTMLElement>('.ov-grid')!;
 const search = panel.querySelector<HTMLInputElement>('.ov-search')!;
 
-export const overviewOpen = () => !panel.hidden;
-
 export function toggleOverview(open = panel.hidden) {
   panel.hidden = !open;
   document.body.classList.toggle('overview-open', open);
