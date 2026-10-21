@@ -108,6 +108,18 @@ async function toWoff(otf: ArrayBuffer): Promise<Uint8Array> {
   return out;
 }
 
+// Glyph names must be unique; "x", "x" and "x_2" become x, x_3 and x_2.
+export function glyphNames(names: string[]): string[] {
+  const taken = new Set(names);
+  const used = new Set<string>();
+  return names.map((n) => {
+    let name = n;
+    for (let k = 2; used.has(name) || (name !== n && taken.has(name)); k++) name = `${n}_${k}`;
+    used.add(name);
+    return name;
+  });
+}
+
 export async function exportIconFont(doc: Doc, boards: Artboard[]) {
   const { default: opentype } = await import('opentype.js'); // loaded only when needed
   const family = doc.name && doc.name !== 'Untitled' ? doc.name.trim() : 'Iconic Icons';
@@ -115,16 +127,7 @@ export async function exportIconFont(doc: Doc, boards: Artboard[]) {
 
   const notdef = new opentype.Glyph({ name: '.notdef', unicode: 0, advanceWidth: EM, path: new opentype.Path() });
   // Every character used in icon names needs a (blank) glyph for ligatures to start from.
-  // Glyph names must be unique; "x", "x" and "x_2" become x, x_3 and x_2.
-  const taken = new Set(boards.map((ab) => snakeName(ab.name)));
-  const used = new Set<string>();
-  const names = boards.map((ab) => {
-    const n = snakeName(ab.name);
-    let name = n;
-    for (let k = 2; used.has(name) || (name !== n && taken.has(name)); k++) name = `${n}_${k}`;
-    used.add(name);
-    return name;
-  });
+  const names = glyphNames(boards.map((ab) => snakeName(ab.name)));
   const chars = [...new Set(names.join(''))].sort();
   const charGlyphs = chars.map((ch) => new opentype.Glyph({ name: ch === '_' ? 'underscore' : `uni${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`, unicode: ch.charCodeAt(0), advanceWidth: 0, path: new opentype.Path() }));
   const iconGlyphs = boards.map((ab, i) => {

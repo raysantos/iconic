@@ -185,7 +185,8 @@ export function booleanResult(s: BooleanShape): BoolResult | null {
 
 function toBox(p: SkPath): Box | null {
   const b = p.computeTightBounds();
-  if (!Number.isFinite(b.fLeft) || b.fRight < b.fLeft) return null;
+  // An empty result (e.g. Subtract removed everything) has no box, not a 0×0 one at the origin.
+  if (!Number.isFinite(b.fLeft) || b.fRight < b.fLeft || (b.fRight === b.fLeft && b.fBottom === b.fTop)) return null;
   return { x: b.fLeft, y: b.fTop, w: b.fRight - b.fLeft, h: b.fBottom - b.fTop };
 }
 
