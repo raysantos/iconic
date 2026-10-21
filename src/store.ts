@@ -169,7 +169,13 @@ function restore(json: string) {
   }
 }
 
+// The canvas settles a half-finished gesture before history moves (set by canvas.ts).
+// Returning true means the undo was used up by the gesture itself.
+let historyGuard: (redo: boolean) => boolean = () => false;
+export const setHistoryGuard = (fn: (redo: boolean) => boolean) => (historyGuard = fn);
+
 export function undo() {
+  if (historyGuard(false)) return;
   const prev = undoStack.pop();
   if (prev === undefined) return;
   redoStack.push(snapshot());
@@ -178,6 +184,7 @@ export function undo() {
 }
 
 export function redo() {
+  if (historyGuard(true)) return;
   const next = redoStack.pop();
   if (next === undefined) return;
   undoStack.push(snapshot());
@@ -204,6 +211,14 @@ export function containerOf(id: string, list = state.doc.shapes, owner: Shape | 
     }
   }
   return null;
+}
+
+// Remove a shape wherever it lives; a boolean group left empty goes too.
+export function removeShape(id: string) {
+  const c = containerOf(id);
+  if (!c) return;
+  c.list.splice(c.list.findIndex((s) => s.id === id), 1);
+  if (c.owner && !c.list.length) removeShape(c.owner.id);
 }
 
 export const byId = (id: string) => allShapes().find((s) => s.id === id);

@@ -4,7 +4,7 @@ import { auditShape } from './audit';
 import { combos, fillIn, interpolate, locSuffix, mastersOf, scaleWhole, snapToGrid } from './masters';
 import { BADGES, BADGE_BOX, resolveSource, type BadgeKey } from './components';
 import { BOOL_LABEL, ICON_STYLES, TYPE_LABEL, type Artboard, type AxisTag, type BezierShape, type BoolOp, type BooleanShape, type Box, type InstanceShape, type IconStyle, type Pt, type Shape, type Style } from './model';
-import { activeArtboard, allShapes, artboardById, artboards, checkpoint, containerOf, commit, emit, inside, newArtboard, newId, nextArtboardName, savePrefs, selected, setActiveArtboard, shapes, state } from './store';
+import { activeArtboard, allShapes, artboardById, artboards, checkpoint, containerOf, commit, emit, inside, newArtboard, newId, nextArtboardName, removeShape, savePrefs, selected, setActiveArtboard, shapes, state } from './store';
 import { exportSvgString } from './svg';
 import { importSvg, svgSize } from './svgimport';
 
@@ -48,12 +48,7 @@ export function deleteSelection() {
   if (!state.selection.length && state.artboardSelected) return void deleteArtboard();
   if (!state.selection.length) return;
   edit(() => {
-    for (const id of state.selection) {
-      const c = containerOf(id);
-      if (c) c.list.splice(c.list.findIndex((s) => s.id === id), 1);
-    }
-    // A boolean group left with nothing inside goes too.
-    state.doc.shapes = state.doc.shapes.filter((s) => s.type !== 'boolean' || s.children.length);
+    state.selection.forEach(removeShape);
     state.selection = [];
   });
 }

@@ -36,7 +36,9 @@ import {
   nextName,
   redo,
   selected,
+  removeShape,
   setActiveArtboard,
+  setHistoryGuard,
   shapes,
   state,
   subscribe,
@@ -1284,7 +1286,7 @@ export function finishPen(closed = false) {
   penHover = null;
   gesture = null;
   if (s.nodes.length < 2) {
-    state.doc.shapes = shapes().filter((x) => x !== s);
+    removeShape(s.id);
     state.selection = [];
     dropCheckpoint();
   } else {
@@ -1307,6 +1309,25 @@ export function penBackspace(): boolean {
 }
 
 export const isDrawingPath = () => !!penPath;
+
+// Undo/redo mid-gesture would leave the gesture editing shapes that history just
+// replaced. Ctrl+Z while drawing removes the last point (Illustrator); anything
+// else in progress is finished first, so the undo then reverts it.
+setHistoryGuard((redo) => {
+  if (penPath) {
+    gesture = null;
+    if (!redo) return penBackspace();
+    finishPen();
+  }
+  if (gesture) {
+    gesture = null;
+    marquee = null;
+    guides = [];
+    targetCache = null;
+    finish();
+  }
+  return false;
+});
 
 // Open-path endpoints under the pointer, for continuing or joining paths.
 function openEndpointAt(p: Pt, skipId?: string): { sid: string; end: 'start' | 'end' } | null {
@@ -1333,7 +1354,7 @@ function penDown(raw: Pt, shift: boolean) {
     if (hit) {
       const other = ensureBezier(hit.sid);
       nodes.push(...(hit.end === 'start' ? other.nodes : reverseNodes(other.nodes)));
-      state.doc.shapes = shapes().filter((s) => s !== other);
+      removeShape(other.id);
       return finishPen(false);
     }
     nodes.push({ p });
@@ -1440,7 +1461,7 @@ export function deleteAnchors(): boolean {
   for (const [sid, idx] of bySid) {
     const s = ensureBezier(sid);
     if (s.nodes.length - idx.length < 2) {
-      state.doc.shapes = shapes().filter((x) => x !== s);
+      removeShape(s.id);
       continue;
     }
     for (const i of idx.sort((a, b) => b - a)) removeAnchorSmooth(s, i);
@@ -1492,7 +1513,7 @@ export function joinPaths(): string | null {
     a.nodes[a.nodes.length - 1].out = bn[0].out;
     a.nodes.push(...bn.slice(1));
   } else a.nodes.push(...bn);
-  state.doc.shapes = shapes().filter((s) => s !== b);
+  removeShape(b.id);
   state.selection = [a.id];
   commit();
   return null;
