@@ -16,7 +16,7 @@ Ray is a designer: explain things in plain language, not jargon.
 - **"Tell first"**: when Ray asks to hear about something before an update, explain the options and wait. Don't change code yet.
 - For big features, propose a short plan before building.
 - Test in the built-in browser before saying something works (see Develop).
-- Update `README.md` (features and shortcut table) and the in-app help (`Ctrl+/`, in `ui.ts`) when features or shortcuts change. Bump `version` in `package.json` for notable features.
+- Update `README.md` (features and shortcut table) and the in-app help (`Ctrl+/`, in `ui/dialogs.ts`) when features or shortcuts change. Bump `version` in `package.json` for notable features.
 
 ## Product direction
 
@@ -48,16 +48,20 @@ Ray is a designer: explain things in plain language, not jargon.
 - **Build:** Vite 5 + TypeScript (strict), vanilla DOM, SVG canvas. No framework.
 - **Geometry:** `pathkit-wasm` (Skia PathOps) for booleans, outline stroke and simplify.
 - **Font export:** `opentype.js`, lazy-loaded.
-- **Persistence:** state lives in `store.ts`; edits go through `edit()` in `actions.ts` (undo via snapshots). Autosave to localStorage under `iconic:doc` and `iconic:prefs`. When the document format changes, migrate old docs in `loadDoc`.
-- **Service worker:** `public/sw.js`. Bump `CACHE` when caching behaviour changes.
+- **Persistence:** state lives in `store.ts`; edits go through `edit()` in `actions/edit.ts` (undo via snapshots). Autosave to localStorage under `iconic:doc` and `iconic:prefs`. When the document format changes, migrate old docs in `loadDoc`.
+- **Service worker:** `public/sw.js`. The build stamps it with a content hash and the file list (`vite.config.ts`), so each deploy gets a fresh cache automatically.
 
 Source map:
 - `src/model.ts`: types
 - `src/geometry.ts`: shape math, Bezier, Smart Corners
 - `src/pathops.ts`: Skia booleans and flattening
-- `src/svg.ts`: rendering
-- `src/canvas.ts`: view, tools, gestures
-- `src/ui.ts`: panels
+- `src/vec.ts`: 2D point/vector helpers
+- `src/svg.ts`: shapes to SVG elements
+- `src/canvas.ts`: pointer, pen and touch gestures and the tools that use them
+- `src/canvas/render.ts`: view (zoom, pan, fit) and drawing; only what's on screen is drawn, and audit and merged-preview results are cached
+- `src/pathedit.ts`: point and path commands (nudge/delete anchors, Join, pencil to curve)
+- `src/actions.ts`: index of editing commands (`A.*`); each area lives in `src/actions/` (edit, selection, booleans, clipboard, transform, artboards, components, variations, style, audit, document)
+- `src/ui.ts`: boot (`initUI`); panels live in `src/ui/` (topbar, popover, layers, design, controls, variations, assets, exportpanel, dialogs, panels, dom)
 - `src/shortcuts.ts`: keymap
 - `src/export.ts`: SVG, Android XML and PNG export
 - `src/svgimport.ts`: SVG reader (elements → shapes; holes → Exclude groups)
