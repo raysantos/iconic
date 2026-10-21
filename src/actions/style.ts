@@ -1,7 +1,7 @@
 // Fill and stroke colors, the Material icon style, and corner radius.
 import { toBezier } from '../geometry';
 import { ICON_STYLES, type BezierShape, type IconStyle, type Style } from '../model';
-import { allShapes, containerOf, commit, emit, savePrefs, state } from '../store';
+import { allShapes, byId, containerOf, commit, emit, savePrefs, state } from '../store';
 import { editable, type EditOpts, edit } from './edit';
 
 // ---- Color (Illustrator: D, X, Shift+X, /) -------------------------------
@@ -58,7 +58,7 @@ export const isCorner = (s: BezierShape, i: number) => !s.nodes[i].in && !s.node
 
 // Any shape as an editable path, in place (rotation baked in).
 export function asBezier(id: string): BezierShape | null {
-  const s = byIdAll(id);
+  const s = byId(id);
   if (!s) return null;
   if (s.type === 'bezier' && !s.rotation) return s;
   if (s.type === 'boolean' || s.type === 'instance') return null;
@@ -67,7 +67,6 @@ export function asBezier(id: string): BezierShape | null {
   if (c) c.list[c.list.indexOf(s)] = b;
   return b;
 }
-export const byIdAll = (id: string) => allShapes().find((s) => s.id === id);
 
 // Corner radius: picked points (Direct Selection), every sharp point of the
 // selected paths, or rectangles' corners.

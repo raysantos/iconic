@@ -1,12 +1,10 @@
 // Audit fixes.
 import { auditShape } from '../audit';
 import { edit } from './edit';
-import { byIdAll } from './style';
-
-// ---- Audit fixes ------------------------------------------------------------
+import { byId } from '../store';
 
 export function fixAuditIssue(sid: string, index: number) {
-  const s = byIdAll(sid);
+  const s = byId(sid);
   if (!s || s.type !== 'bezier') return;
   const issue = auditShape(s)[index];
   if (issue) edit(() => issue.fix(s));
@@ -16,7 +14,7 @@ export function fixAuditIssue(sid: string, index: number) {
 export function fixAllAudit(sids: string[]) {
   edit(() => {
     for (const sid of sids) {
-      const s = byIdAll(sid);
+      const s = byId(sid);
       if (!s || s.type !== 'bezier') continue;
       for (let guard = 0; guard < 100; guard++) {
         const next = auditShape(s)[0];
