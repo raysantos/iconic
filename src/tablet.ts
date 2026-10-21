@@ -137,7 +137,16 @@ wheel.addEventListener('pointerdown', (e) => {
   closeToolWheel();
 });
 document.addEventListener('pointerdown', (e) => wheelOpen() && !wheel.contains(e.target as Node) && closeToolWheel(), true);
-document.addEventListener('keydown', (e) => e.key === 'Escape' && closeToolWheel());
+// Esc closes the wheel and stops there (it doesn't also deselect).
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (e.key !== 'Escape' || !wheelOpen()) return;
+    closeToolWheel();
+    e.stopPropagation();
+  },
+  true,
+);
 
 export function installTablet(h: Hooks) {
   hooks = h;

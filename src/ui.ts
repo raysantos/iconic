@@ -275,7 +275,16 @@ function openMenu(anchor: HTMLElement, which: string) {
 document.addEventListener('pointerdown', (e) => {
   if (openPop && !openPop.contains(e.target as Node) && !(e.target as Element).closest('[data-menu],[data-flyout]')) closePop();
 });
-document.addEventListener('keydown', (e) => e.key === 'Escape' && closePop());
+// Esc closes an open menu and stops there (it doesn't also deselect).
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (e.key !== 'Escape' || !openPop) return;
+    closePop();
+    e.stopPropagation();
+  },
+  true,
+);
 
 function openExport() {
   openMenu(q('.export-btn', topbar), 'export');
@@ -1071,13 +1080,15 @@ function numField(o: NumOpts) {
     };
     const up = () => {
       label.removeEventListener('pointermove', move);
+      label.removeEventListener('pointerup', up);
+      label.removeEventListener('pointercancel', up);
       document.body.classList.remove('scrubbing');
       discardIfUnchanged();
       commit();
     };
     label.addEventListener('pointermove', move);
-    label.addEventListener('pointerup', up, { once: true });
-    label.addEventListener('pointercancel', up, { once: true });
+    label.addEventListener('pointerup', up);
+    label.addEventListener('pointercancel', up);
   });
   return wrap;
 }
@@ -1195,13 +1206,16 @@ function reviewIssues(issues: ExportIssue[]): Promise<boolean> {
       list,
       h('div', { class: 'dialog-actions' }, cancel, go),
     );
+    // The dialog element is shared (Variants uses it too), so its Esc listener goes on close.
+    const onEsc = () => done(false);
     const done = (ok: boolean) => {
+      dlg.removeEventListener('cancel', onEsc);
       dlg.close();
       resolve(ok);
     };
     cancel.addEventListener('click', () => done(false));
     go.addEventListener('click', () => done(true));
-    dlg.addEventListener('cancel', () => resolve(false), { once: true });
+    dlg.addEventListener('cancel', onEsc);
     dlg.showModal();
   });
 }
