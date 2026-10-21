@@ -82,7 +82,9 @@ npx vite --port 5174 --strictPort
 
 - Open http://localhost:5174 in the built-in browser. In dev, `window.iconic.state` exposes the store for checks.
 - Stop the server when you're done.
-- `npm run build` type-checks the project and builds `dist/` with base `/iconic/`.
+- `npm run build` type-checks the project and builds `dist/` with base `/iconic/`. It also stamps `dist/sw.js` with a cache version and the list of built files.
+- `npm test` runs the Vitest suite in `test/` (geometry, path parsing, booleans with the real PathKit wasm, export, SVG import in jsdom). Run it with the build before committing; deploys stop if it fails. Add a regression test with each bug fix.
+- `npm run preview` serves `dist/` at `/iconic/` like GitHub Pages. The built-in browser pane can't register service workers, so test `sw.js` changes outside it.
 - The project folder is synced by OneDrive. If a file is locked, wait and retry.
 
 ## Ideas not yet requested (ask before starting)
