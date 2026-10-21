@@ -44,12 +44,12 @@ import {
   subscribe,
   undo,
 } from './store';
-import { paintColor, visibleOn } from './export';
+import { paintColor } from './export';
 import { AUDIT_LABEL, auditShape } from './audit';
 import { balanceTunni, dragTunni, powerAdjust, segmentAt } from './curvetools';
 import { cubicsToNodes, fitCurve, removeAnchorSmooth, reverseNodes } from './fit';
 import { collectTargets, smartOn, snapBox, snapPoint, type Guide } from './guides';
-import { flattenArtboard, hasPathOps } from './pathops';
+import { flattenArtboard, hasPathOps, type Flattened } from './pathops';
 import { el, renderShapes, setAttrs, shapeGeometry } from './svg';
 import { altOn, notify, openToolWheel, penSeen, shiftOn } from './tablet';
 
@@ -66,9 +66,29 @@ export const onViewChange = (fn: () => void) => viewListeners.push(fn);
 
 const u = () => 1 / viewState.zoom; // world units per screen pixel
 
+// Only what's on screen, plus half a screen around it, is drawn. Line widths and
+// marker sizes depend only on the zoom, so panning just moves the drawing until
+// the view leaves the drawn area.
+let renderedZoom = NaN;
+let drawnArea: Box | null = null;
+// The canvas size as last seen by the ResizeObserver: measuring it while drawing
+// would force a page layout right after the panels change.
+let canvasSize = { w: 0, h: 0 };
+
+function viewArea(margin: number): Box | null {
+  const { w, h } = canvasSize;
+  if (!w || !h) return null; // not laid out yet: draw everything
+  const [x0, y0] = toWorld(-w * margin, -h * margin);
+  const [x1, y1] = toWorld(w * (1 + margin), h * (1 + margin));
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+const covers = (outer: Box | null, inner: Box | null) =>
+  !inner || (!!outer && inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h);
+
 function applyView() {
   setAttrs(world, { transform: `translate(${viewState.x} ${viewState.y}) scale(${viewState.zoom})` });
-  render();
+  if (viewState.zoom !== renderedZoom || !covers(drawnArea, viewArea(0))) render();
   viewListeners.forEach((fn) => fn());
 }
 
@@ -198,9 +218,14 @@ export function setAuditFocus(at: Pt | null) {
 const pointTools = new Set(['direct', 'addAnchor', 'deleteAnchor', 'convertAnchor']);
 
 export function render() {
+  renderedZoom = viewState.zoom;
+  drawnArea = viewArea(0.5);
+  const area = drawnArea;
+  const near = (b: Box) => !area || intersects(b, area);
   world.replaceChildren();
 
   for (const ab of artboards()) {
+    if (!near(ab)) continue;
     const bg = el('rect', { x: ab.x, y: ab.y, width: ab.w, height: ab.h }, 'artboard' + (state.artboardSelected && ab.id === state.activeArtboard ? ' selected' : ''));
     bg.dataset.artboardBg = ab.id;
     world.append(bg);
@@ -212,22 +237,26 @@ export function render() {
   // real shapes stay on top, invisible, so they can still be picked and edited.
   const merged = state.prefs.mergedPreview && hasPathOps();
   if (merged) {
+    // Each shape's box once, not once per artboard (it was most of a merged redraw).
+    const boxes = new Map(shapes().map((s) => [s, worldBox(s)]));
     for (const ab of artboards()) {
-      const on = visibleOn(shapes(), ab);
-      const flat = flattenArtboard(on, ab);
+      if (!near(ab)) continue;
+      const on = shapes().filter((s) => !s.hidden && intersects(boxes.get(s)!, ab)); // as export's visibleOn
+      const flat = mergedOf(ab, on);
       if (!flat?.d) continue;
       const color = on.map(paintColor).find(Boolean) ?? '#000000';
       world.append(el('path', { d: flat.d, transform: `translate(${ab.x} ${ab.y})`, fill: color, 'fill-rule': flat.fillRule }, 'merged'));
     }
   }
 
-  const drawn = renderShapes(shapes(), (e, s) => {
+  const onScreen = shapes().filter((s) => near(worldBox(s)));
+  const drawn = renderShapes(onScreen, (e, s) => {
     e.dataset.id = s.id;
     if (s.locked) e.classList.add('locked');
     if (merged) e.classList.add('ghost');
   });
   world.append(...drawn);
-  for (const s of shapes()) if (!s.hidden && s.type === 'boolean' && isOpen(s)) world.append(groupInterior(s));
+  for (const s of onScreen) if (!s.hidden && s.type === 'boolean' && isOpen(s)) world.append(groupInterior(s));
 
   const overlay = el('g', {}, 'overlay');
   world.append(overlay);
@@ -250,14 +279,14 @@ export function render() {
   }
 
   // Artboard labels sit above the artwork so they stay clickable.
-  for (const ab of artboards()) world.insertBefore(artboardLabel(ab), overlay);
+  for (const ab of artboards()) if (near(ab)) world.insertBefore(artboardLabel(ab), overlay);
   const ab = activeArtboard();
   if (state.artboardSelected || state.tool === 'artboard') overlay.append(artboardBox(ab, state.tool === 'artboard' || state.tool === 'select'));
 
   // Audit markers: geometry problems, with the reason on hover.
   if (state.prefs.audit && !penPath) {
     for (const s of allShapes()) {
-      if (s.hidden || s.locked) continue;
+      if (s.hidden || s.locked || !near(worldBox(s))) continue;
       for (const issue of auditShape(s)) {
         const m = el('circle', { cx: issue.at[0], cy: issue.at[1], r: 4 * u(), 'stroke-width': 1.5 * u() }, 'audit-mark');
         m.dataset.audit = s.id;
@@ -280,6 +309,20 @@ export function render() {
   }
   if (guides.length) overlay.append(guideOverlay());
   if (marquee) overlay.append(el('rect', { x: marquee.x, y: marquee.y, width: marquee.w, height: marquee.h, 'stroke-width': u() }, 'marquee'));
+}
+
+// Merging is the slowest part of a redraw (a Skia union per artboard), so each
+// artboard's result is kept until its shapes change. Artboards with component
+// instances are always redone: their look also depends on other artboards.
+const mergedCache = new Map<string, { key: string; flat: Flattened | null }>();
+function mergedOf(ab: Artboard, on: Shape[]): Flattened | null {
+  if (allShapes(on).some((s) => s.type === 'instance')) return flattenArtboard(on, ab);
+  const key = `${ab.x} ${ab.y} ${ab.w} ${ab.h}` + JSON.stringify(on);
+  const hit = mergedCache.get(ab.id);
+  if (hit?.key === key) return hit.flat;
+  const flat = flattenArtboard(on, ab);
+  mergedCache.set(ab.id, { key, flat });
+  return flat;
 }
 
 // Pixel lines (when zoomed in enough) plus a stronger line every `gridSize` px.
@@ -1569,12 +1612,14 @@ subscribe(() => render());
 // at 0×0 in a background tab), then just redraw on resizes.
 let fitted = false;
 let lastSize = screenSize();
+canvasSize = lastSize;
 if (lastSize.w) {
   fitted = true;
   fitArtboard();
 }
 new ResizeObserver(() => {
   const size = screenSize();
+  canvasSize = size;
   if (!fitted && size.w && size.h) {
     fitted = true;
     fitArtboard();

@@ -39,8 +39,22 @@ export function snapNode(e: BNode) {
   Object.assign(e, { p: mv(e.p), in: mv(e.in), out: mv(e.out) });
 }
 
+// The canvas audits every path on every redraw, but only the one being edited
+// changes; results are kept per shape until its points change.
+const cache = new Map<string, { key: string; issues: AuditIssue[] }>();
+
 export function auditShape(s: Shape): AuditIssue[] {
   if (s.type !== 'bezier' || s.hidden) return [];
+  const key = (s.closed ? 'c' : 'o') + JSON.stringify(s.nodes);
+  const hit = cache.get(s.id);
+  if (hit?.key === key) return hit.issues;
+  if (cache.size > 5000) cache.clear(); // deleted shapes' entries
+  const issues = findIssues(s);
+  cache.set(s.id, { key, issues });
+  return issues;
+}
+
+function findIssues(s: BezierShape): AuditIssue[] {
   const issues: AuditIssue[] = [];
   const n = s.nodes.length;
   const segs = segments(s.nodes, s.closed);
