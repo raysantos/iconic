@@ -16,7 +16,7 @@ Ray is a designer: explain things in plain language, not jargon.
 - **"Tell first"**: when Ray asks to hear about something before an update, explain the options and wait. Don't change code yet.
 - For big features, propose a short plan before building.
 - Test in the built-in browser before saying something works (see Develop).
-- Update `README.md` (features and shortcut table) and the in-app help (`Ctrl+/`, in `ui/dialogs.ts`) when features or shortcuts change. Bump `version` in `package.json` for notable features.
+- Update `README.md` (features and shortcut table) and the in-app help (`Ctrl+/`, in `ui/dialogs.ts`) when features or shortcuts change. Bump `version` in `package.json` for notable features, and add the user-facing changes to `CHANGELOG.md`.
 
 ## Product direction
 

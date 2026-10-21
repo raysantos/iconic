@@ -1,6 +1,6 @@
 # Iconic
 
-**Live app:** https://raysantos.github.io/iconic/
+**Live app:** https://raysantos.github.io/iconic/ · **Version 1.1.0** · [What's new](CHANGELOG.md)
 
 **An icon editing tool with a familiar look and feel and the precision of font-editing tools.**
 
@@ -77,7 +77,9 @@ Iconic is made for designing **Google Material icons**, on PC and phone. It has 
 - **Color picker:** saturation/brightness area, hue slider, Hex / RGB / HSL, eyedropper (Chrome/Edge), document colors and a Material palette; keyboard and touch friendly, one undo step per pick
 - **Interface font:** Roboto Flex (variable, optical sizing), bundled so it works offline
 - **Layers:** multi-select, drag to reorder, rename, lock, hide
-- Undo/redo, autosave, mouse/touch (pinch zoom)/stylus
+- Undo/redo (also mid-drag, and point by point while drawing with the Pen), autosave, mouse/touch (pinch zoom)/stylus
+- **Big files stay fast:** only what's on screen is drawn, and Audit and Merged preview results are reused until a shape changes
+- **Offline:** the whole app is saved on your first visit; each update replaces it completely
 
 ## Pen tablets (Tablet mode)
 
@@ -110,11 +112,17 @@ On Mac, `Ctrl` is `⌘` and `Alt` is `⌥`. In a browser tab, Chrome reserves a 
 ```bash
 npm install
 npm run dev
+npm test
 ```
 
-`npm run dev` listens on your local network, so you can open the printed `Network:` URL on your phone (same Wi-Fi) to test touch.
+`npm run dev` listens on your local network, so you can open the printed `Network:` URL on your phone (same Wi-Fi) to test touch. `npm test` runs the Vitest suite in `test/` (geometry, path parsing, booleans with the real Skia WebAssembly, export, SVG import); `npm run test:watch` re-runs it as you edit.
 
-Source layout: `src/model.ts` (types), `geometry.ts` (shape math, Bezier), `fit.ts` (curve fitting), `guides.ts` (smart guides), `pathops.ts` (Skia booleans / outline stroke), `store.ts` (document, selection, undo), `actions.ts` (editing commands), `canvas.ts` (view and tools), `ui.ts` (panels, menus), `shortcuts.ts` (keymap), `export.ts` (SVG / Android / PNG), `svgimport.ts` (SVG reader), `importer.ts` (paste, drop, Import SVG), `svg.ts`, `icons.ts`.
+Source layout:
+- **Document:** `src/model.ts` (types), `store.ts` (document, selection, undo), `geometry.ts` (shape math, Bezier), `vec.ts` (2D vectors), `fit.ts` (curve fitting), `pathops.ts` (Skia booleans, outline stroke), `masters.ts` (interpolation), `components.ts` (instances, badges), `audit.ts`
+- **Editing commands:** `actions.ts` re-exports `src/actions/` (selection, booleans, clipboard, transform, artboards, components, variations, style, …); `pathedit.ts` (point and path commands)
+- **Canvas:** `canvas.ts` (pointer, pen and touch gestures), `canvas/render.ts` (view and drawing), `guides.ts` (smart guides), `svg.ts`
+- **Interface:** `ui.ts` boots `src/ui/` (top bar, layers, Design panel, export, dialogs, …), `shortcuts.ts` (keymap), `tablet.ts`, `colorpicker.ts`, `overview.ts`
+- **In and out:** `export.ts` (SVG / Android / PNG), `fontexport.ts`, `svgimport.ts` (SVG reader), `importer.ts` (paste, drop, Import SVG)
 
 ## Build
 
@@ -122,14 +130,14 @@ Source layout: `src/model.ts` (types), `geometry.ts` (shape math, Bezier), `fit.
 npm run build
 ```
 
-Output goes to `dist/`. Every push to `main` deploys automatically to GitHub Pages via `.github/workflows/deploy.yml`.
+Output goes to `dist/`, and `npm run preview` serves it at `/iconic/` like GitHub Pages. Every push to `main` runs the tests and deploys to GitHub Pages (`.github/workflows/deploy.yml`); other branches and pull requests get the same checks without deploying (`check.yml`).
 
 ## Roadmap ideas
 
 - Round-trip tests with Figma and Illustrator files
 - Destructive Outline Stroke / Flatten commands
 - Groups (`Ctrl+G`)
-- Icon font / sprite export
+- SVG sprite export
 
 ## License
 
