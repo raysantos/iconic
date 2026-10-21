@@ -1,0 +1,20 @@
+name: Check
+
+# Type check, tests and build on every branch and pull request.
+on:
+  push:
+    branches-ignore: [main] # main runs the same steps in deploy.yml
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build # includes tsc
