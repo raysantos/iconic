@@ -1,7 +1,8 @@
 // Adobe Illustrator-style keyboard shortcuts (Ctrl = Cmd and Alt = Option on Mac).
 import * as A from './actions';
 import { shiftOn } from './tablet';
-import { actualSize, deleteAnchors, finishPen, fitAll, fitArtboard, fitSelection, joinPaths, nudgeAnchors, isDrawingPath, penBackspace, setSpaceHeld, zoomAt } from './canvas';
+import { actualSize, finishPen, fitAll, fitArtboard, fitSelection, isDrawingPath, penBackspace, setSpaceHeld, zoomAt } from './canvas';
+import { deleteAnchors, joinPaths, nudgeAnchors } from './pathedit';
 import type { BoolOp, Tool } from './model';
 import { armPaste, openImport } from './importer';
 import { toggleOverview } from './overview';
