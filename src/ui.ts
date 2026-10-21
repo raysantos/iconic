@@ -388,22 +388,34 @@ let renamingId: string | null = null;
 
 const TYPE_ICON: Record<Shape['type'], string> = { rect: 'rect', ellipse: 'ellipse', line: 'line', path: 'pencil', bezier: 'path', boolean: 'union', instance: 'component' };
 
+// Rebuilding every row was most of a click's cost in big files, so the rows are
+// only replaced when they change; a new selection just moves the highlight.
+let layersHtml = '';
+
 function renderLayers() {
   if (renamingId) return; // don't steal focus from the rename field
   if (!shapes().length) {
     layerList.innerHTML = `<li class="layers-empty">Pick a tool and draw on the artboard.<br>Press <kbd>${pretty('Ctrl+/')}</kbd> for shortcuts.</li>`;
+    layersHtml = '';
     return;
   }
   // Topmost first; shapes inside boolean groups are indented under them.
   const rows = (list: Shape[], depth: number): string[] =>
     [...list].reverse().flatMap((s) => [row(s, depth), ...(s.type === 'boolean' ? rows(s.children, depth + 1) : [])]);
-  layerList.innerHTML = rows(shapes(), 0).join('');
+  const html = rows(shapes(), 0).join('');
+  if (html !== layersHtml) layerList.innerHTML = layersHtml = html;
+  const sel = new Set(state.selection);
+  for (const li of layerList.children as HTMLCollectionOf<HTMLElement>) {
+    const on = sel.has(li.dataset.id!);
+    li.classList.toggle('selected', on);
+    li.setAttribute('aria-selected', String(on));
+  }
 }
 
 function row(s: Shape, depth: number) {
-  const cls = ['layer-row', state.selection.includes(s.id) && 'selected', s.hidden && 'is-hidden', s.locked && 'is-locked'].filter(Boolean).join(' ');
+  const cls = ['layer-row', s.hidden && 'is-hidden', s.locked && 'is-locked'].filter(Boolean).join(' ');
   const ic = s.type === 'boolean' ? s.op : TYPE_ICON[s.type];
-  return `<li class="${cls}" data-id="${s.id}" data-depth="${depth}" style="padding-left:${16 + depth * 16}px" role="treeitem" aria-level="${depth + 1}" aria-selected="${state.selection.includes(s.id)}">
+  return `<li class="${cls}" data-id="${s.id}" data-depth="${depth}" style="padding-left:${16 + depth * 16}px" role="treeitem" aria-level="${depth + 1}">
     <span class="layer-icon">${icon(ic, 14)}</span>
     <span class="layer-name">${escapeHtml(s.name ?? TYPE_LABEL[s.type])}</span>
     <button class="row-btn${s.locked ? ' on' : ''}" data-act="lock" title="${s.locked ? 'Unlock' : 'Lock'} (${pretty('Ctrl+2')})">${icon(s.locked ? 'lock' : 'unlock', 14)}</button>
@@ -438,6 +450,7 @@ layerList.addEventListener('dblclick', (e) => {
   if (!row || (e.target as Element).closest('[data-act]')) return;
   const s = byId(row.dataset.id!)!;
   renamingId = s.id;
+  layersHtml = ''; // the row is edited in place, so rebuild it afterwards
   const input = h('input', { class: 'layer-rename', value: s.name ?? TYPE_LABEL[s.type] });
   q('.layer-name', row).replaceWith(input);
   input.focus();
