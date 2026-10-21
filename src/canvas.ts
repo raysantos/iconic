@@ -1,5 +1,8 @@
 // The editing surface: view (zoom/pan), rendering, and pointer tools.
-import { duplicateSelection, rotateShapes, scaleShapes, selectionBox, shapesOn, view as actionsView, withNewIds } from './actions';
+import { shapesOn } from './actions/artboards';
+import { rotateShapes, scaleShapes, selectionBox } from './actions/transform';
+import { duplicateSelection, withNewIds } from './actions/selection';
+import { view as actionsView } from './actions/edit';
 import {
   bbox,
   center,
