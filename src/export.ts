@@ -4,7 +4,7 @@
 import { locSuffix } from './masters';
 import { intersects, round, worldBox } from './geometry';
 import type { Artboard, Doc, Shape } from './model';
-import { flattenArtboard, geometryPath, hasPathOps, shapeAreaPath, transformPath } from './pathops';
+import { booleanResult, flattenArtboard, geometryPath, hasPathOps, shapeAreaPath, transformPath } from './pathops';
 import { state } from './store';
 import { exportSvgString } from './svg';
 
@@ -113,6 +113,7 @@ export function vectorDrawable(doc: Doc, ab: Artboard, opts: Pick<ExportOptions,
       android:fillColor="${color(iconColor(shapes))}"/>`;
       }
       const attrs = [`android:pathData="${transformPath(geometryPath(s), 1, -ab.x, -ab.y)}"`];
+      if (s.type === 'boolean' && booleanResult(s)?.fillRule === 'evenodd') attrs.push('android:fillType="evenOdd"'); // Exclude/Subtract holes
       if (s.type !== 'line' && s.fill !== 'none') attrs.push(`android:fillColor="${color(s.fill)}"`);
       if (s.strokeWidth > 0) {
         attrs.push(

@@ -115,12 +115,15 @@ export async function exportIconFont(doc: Doc, boards: Artboard[]) {
 
   const notdef = new opentype.Glyph({ name: '.notdef', unicode: 0, advanceWidth: EM, path: new opentype.Path() });
   // Every character used in icon names needs a (blank) glyph for ligatures to start from.
-  const seen = new Map<string, number>();
+  // Glyph names must be unique; "x", "x" and "x_2" become x, x_3 and x_2.
+  const taken = new Set(boards.map((ab) => snakeName(ab.name)));
+  const used = new Set<string>();
   const names = boards.map((ab) => {
     const n = snakeName(ab.name);
-    const k = (seen.get(n) ?? 0) + 1;
-    seen.set(n, k);
-    return k > 1 ? `${n}_${k}` : n; // glyph names must be unique
+    let name = n;
+    for (let k = 2; used.has(name) || (name !== n && taken.has(name)); k++) name = `${n}_${k}`;
+    used.add(name);
+    return name;
   });
   const chars = [...new Set(names.join(''))].sort();
   const charGlyphs = chars.map((ch) => new opentype.Glyph({ name: ch === '_' ? 'underscore' : `uni${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`, unicode: ch.charCodeAt(0), advanceWidth: 0, path: new opentype.Path() }));

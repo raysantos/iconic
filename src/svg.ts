@@ -112,8 +112,9 @@ export function renderShapes(list: Shape[], decorate?: (e: SVGElement, s: Shape)
     const b = worldBox(s);
     const area = { x: b.x - g - 1, y: b.y - g - 1, w: b.w + 2 * g + 2, h: b.h + 2 * g + 2 };
     // White = keep, black = cut. The mask only needs to cover the badge region.
+    // Named colors, so the currentColor export (which swaps hex colors) leaves them alone.
     const m = el('mask', { id, maskUnits: 'userSpaceOnUse', x: -1e5, y: -1e5, width: 2e5, height: 2e5 });
-    m.append(el('rect', { x: -1e5, y: -1e5, width: 2e5, height: 2e5, fill: '#fff' }), el('path', { d, fill: '#000' }));
+    m.append(el('rect', { x: -1e5, y: -1e5, width: 2e5, height: 2e5, fill: 'white' }), el('path', { d, fill: 'black' }));
     defs.append(m);
     masks.push({ id, box: area, index: i });
   });
